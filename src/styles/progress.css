@@ -74,7 +74,7 @@
 }
 .plan-budget > button.active,
 .review-scope > button.active {
-  background: var(--surface);
+  background: var(--surface-raised);
   color: var(--ink);
   font-weight: 600;
   box-shadow: var(--shadow-sm);

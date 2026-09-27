@@ -13,6 +13,7 @@
   --surface: #ffffff;
   --surface-2: #f5f8f8; /* quiet fills inside a card */
   --surface-3: #eef3f4; /* chips, tracks, segmented controls */
+  --surface-raised: #ffffff; /* the chosen segment on a --surface-3 track */
   --score-surround: #e5ebed;
 
   /* Text */
@@ -197,6 +198,7 @@
     --surface: #15252a;
     --surface-2: #1a2c30;
     --surface-3: #203539;
+    --surface-raised: #284145;
     --score-surround: #24353a;
     --ink: #e2ecec;
     --ink-muted: #9fb3b6;
@@ -291,6 +293,7 @@
   --surface: #15252a;
   --surface-2: #1a2c30;
   --surface-3: #203539;
+  --surface-raised: #284145;
   --score-surround: #24353a;
   --ink: #e2ecec;
   --ink-muted: #9fb3b6;
@@ -924,7 +927,7 @@ a {
   color: var(--ink-muted);
 }
 .hand-switch > button.active {
-  background: var(--surface);
+  background: var(--surface-raised);
   color: var(--accent);
   font-weight: 600;
   box-shadow: var(--shadow-sm);
@@ -1066,6 +1069,7 @@ input[type='color'] {
   padding: 0 var(--space-3);
   min-height: var(--tap);
   min-width: 200px;
+  flex: 0 1 300px;
   color: var(--ink-muted);
 }
 .search:focus-within {

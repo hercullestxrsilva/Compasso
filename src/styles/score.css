@@ -115,6 +115,12 @@
     display: none;
   }
 }
+/* Narrower still, the named tools win over the top page arrows; the bottom bar keeps them. */
+@container score (min-width: 620px) and (max-width: 699px) {
+  .score-viewer .score-pager-top {
+    display: none;
+  }
+}
 
 /* "Mais" popover */
 .score-menu {
