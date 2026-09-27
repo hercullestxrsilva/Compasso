@@ -650,6 +650,10 @@
 }
 
 @media (max-width: 700px) {
+  /* One review card per row: each has a date field and quick buttons that need the width. */
+  .piece-grid.review-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .plan-panel .section-heading {
     flex-wrap: wrap;
   }

@@ -714,6 +714,8 @@
 }
 .routine-add {
   display: grid;
+  /* The select is as wide as its longest trecho name; the column must not follow it past the dialog. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
   margin-bottom: var(--space-3);
 }
