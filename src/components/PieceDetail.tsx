@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   ArrowLeft,
@@ -32,7 +32,7 @@ import { Modal, Field, Empty, Badge, ErrorBox, errorText, useConfirm, type Notif
 import { PieceForm } from './Library';
 import ScoreViewer from './ScoreViewer';
 import { forgetHistory } from '../annotation-history';
-import { forgetViewState, loadLastScore, saveLastScore } from '../score-view';
+import { forgetViewState, loadLastScore, saveLastScore, titleFromFileName } from '../score-view';
 import { plural, ratingLabels, relativeDay, segmentStats, type SegmentStats } from '../segment-stats';
 import '../styles/score.css';
 
@@ -183,10 +183,12 @@ function SegmentHistory({ stats }: { stats?: SegmentStats }) {
         {plural(stats.count, 'sessão', 'sessões')} · última {relativeDay(stats.lastAt)}
         {minutes > 0 && ` · ${minutes} min`}
       </p>
-      <p>
-        Última prática a {stats.lastBpm} BPM
-        {stats.bestBpm > stats.lastBpm && ` · melhor ${stats.bestBpm} BPM`}
-      </p>
+      {stats.lastBpm !== undefined && (
+        <p>
+          Último andamento: {stats.lastBpm} BPM
+          {stats.bestBpm !== undefined && stats.bestBpm > stats.lastBpm && ` · melhor: ${stats.bestBpm} BPM`}
+        </p>
+      )}
       {stats.lastRating && (
         <p>
           Última avaliação:
@@ -409,10 +411,12 @@ export default function PieceDetail({
     [marking, setMarking] = useState<Segment | null>(null),
     [regionRequest, setRegionRequest] = useState(0);
   const [target, setTarget] = useState<Region>(),
+    [focusRequest, setFocusRequest] = useState(0),
     [note, setNote] = useState(''),
     [source, setSource] = useState<'mine' | 'teacher'>('teacher'),
     [task, setTask] = useState(''),
     [taskSegment, setTaskSegment] = useState('');
+  const scoreCard = useRef<HTMLElement>(null);
   const active = scores.find(s => s.id === scoreId) ?? scores[0];
   const sheetSegment = segments.find(s => s.id === sheet);
   useEffect(() => {
@@ -431,7 +435,7 @@ export default function PieceDetail({
           id: next,
           pieceId: id,
           assetId: asset.id,
-          title: file.name.replace(/\.[^.]+$/, ''),
+          title: titleFromFileName(file.name),
           createdAt: now(),
         });
       });
@@ -442,14 +446,26 @@ export default function PieceDetail({
       notify(`A partitura não foi importada. ${errorText(err)}`, 'error');
     }
   };
+  /** On a portrait tablet the score sits above the trechos: bring it on screen before changing it. */
+  const revealScore = () => {
+    const card = scoreCard.current;
+    if (!card) return;
+    const top = card.getBoundingClientRect().top;
+    if (top >= 0 && top < window.innerHeight * 0.4) return;
+    const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    card.scrollIntoView({ block: 'start', behavior: still ? 'auto' : 'smooth' });
+  };
   const view = (segment: Segment) => {
     if (!segment.regions.length) return;
     setScoreId(segment.scoreId);
-    setTarget({ ...segment.regions[0] });
+    setTarget(segment.regions[0]);
+    setFocusRequest(n => n + 1);
+    revealScore();
   };
   const markOnScore = (segment: Segment) => {
     setMarking(segment);
     setRegionRequest(n => n + 1);
+    revealScore();
   };
   const removeSegment = async (segment: Segment) => {
     const ok = await confirm({
@@ -465,6 +481,8 @@ export default function PieceDetail({
         await db.presets.where('segmentId').equals(segment.id).delete();
         await db.tasks.where('segmentId').equals(segment.id).modify({ segmentId: undefined });
       });
+      setTaskSegment(current => (current === segment.id ? '' : current));
+      if (marking?.id === segment.id) setMarking(null);
       notify('Trecho excluído.');
     } catch (err) {
       notify(`Não foi possível excluir o trecho. ${errorText(err)}`, 'error');
@@ -494,7 +512,7 @@ export default function PieceDetail({
         </button>
       </header>
       <div className="study-layout">
-        <section className="score-card">
+        <section className="score-card" ref={scoreCard}>
           <div className="section-heading score-card-heading">
             <div className="score-version">
               <FileMusic size={18} aria-hidden />
@@ -520,42 +538,37 @@ export default function PieceDetail({
               {active && (
                 <button
                   type="button"
-                  className="icon-btn"
+                  className="btn small secondary score-versions-button"
                   aria-label="Versões da partitura: renomear ou excluir"
                   onClick={() => setVersions(true)}
                 >
-                  <Layers size={17} />
+                  <Layers size={15} aria-hidden />
+                  Versões
                 </button>
               )}
             </div>
             <ImportScoreButton onFile={importScore} />
           </div>
-          {marking && active && (
-            <div className="marking-banner" role="status">
-              <SquareDashed size={17} aria-hidden />
-              <span>
-                Desenhe na partitura o retângulo de <strong>{marking.title}</strong>.
-              </span>
-              <button type="button" className="link-btn" onClick={() => setMarking(null)}>
-                Cancelar
-              </button>
-            </div>
-          )}
           {active ? (
             <ScoreViewer
               key={active.id}
               score={active}
               notify={notify}
               targetRegion={target}
+              focusRequest={focusRequest}
               segments={segments.filter(s => s.scoreId === active.id)}
               onSegmentClick={setSheet}
               requestRegion={regionRequest}
+              regionPrompt={marking ? `Arraste um retângulo ao redor de “${marking.title}”.` : undefined}
+              onRegionCancel={() => setMarking(null)}
               onRegion={async region => {
                 if (!marking) return setSegmentForm({ region });
+                setMarking(null);
                 try {
-                  await db.segments.update(marking.id, { scoreId: active.id, regions: [region] });
+                  // The trecho may have been deleted meanwhile: then the rectangle starts a new one.
+                  if (!(await db.segments.update(marking.id, { scoreId: active.id, regions: [region] })))
+                    return setSegmentForm({ region });
                   notify(`“${marking.title}” marcado na partitura.`);
-                  setMarking(null);
                 } catch (err) {
                   notify(`Não foi possível marcar o trecho. ${errorText(err)}`, 'error');
                 }
@@ -747,7 +760,8 @@ export default function PieceDetail({
                     await db.tasks.add({
                       id: uid(),
                       pieceId: id,
-                      segmentId: taskSegment || undefined,
+                      // Only a trecho that still exists; a deleted one leaves the task unlinked.
+                      segmentId: segments.some(s => s.id === taskSegment) ? taskSegment : undefined,
                       title: task.trim(),
                       done: false,
                       dueDate: '',
@@ -845,7 +859,17 @@ export default function PieceDetail({
         </aside>
       </div>
       {edit && (
-        <PieceForm piece={piece} onClose={() => setEdit(false)} onSaved={() => notify('Peça atualizada.')} />
+        <PieceForm
+          piece={piece}
+          onClose={() => setEdit(false)}
+          onSaved={(_, newScore) => {
+            notify(newScore ? 'Peça atualizada. A nova partitura já está aberta.' : 'Peça atualizada.');
+            if (!newScore) return;
+            setScoreId(newScore);
+            setTarget(undefined);
+            setMarking(null);
+          }}
+        />
       )}
       {versions && (
         <ScoreVersions
@@ -858,6 +882,7 @@ export default function PieceDetail({
             if (deleted === active?.id) {
               setScoreId('');
               setTarget(undefined);
+              setMarking(null);
             }
             if (scores.length <= 1) setVersions(false);
           }}

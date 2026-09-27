@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defaultConfig, type Session } from '../src/domain';
-import { plural, relativeDay, segmentStats } from '../src/segment-stats';
+import { plural, reachedBpm, relativeDay, segmentStats } from '../src/segment-stats';
 
 const session = (overrides: Partial<Session>): Session => ({
   id: crypto.randomUUID(),
@@ -48,6 +48,30 @@ describe('segment stats', () => {
       nextStep: 'Mão esquerda sozinha',
     });
     expect(stats.get('other')?.count).toBe(1);
+  });
+
+  it('ignores timer-only sessions for tempo and counts the tempo a ramp reached', () => {
+    const ramp = { ...defaultConfig, bpm: 60, increaseEvery: 2, increaseBpm: 4, targetBpm: 70 };
+    const stats = segmentStats([
+      session({ startedAt: '2026-09-18T10:00:00.000Z', config: ramp, completedRepetitions: 5 }),
+      session({ startedAt: '2026-09-19T10:00:00.000Z', config: { ...ramp }, completedRepetitions: 3 }),
+      session({
+        startedAt: '2026-09-21T10:00:00.000Z',
+        config: { ...defaultConfig, bpm: 120, metronome: false },
+      }),
+    ]).get('seg');
+    // Rounds 1–2 at 60, 3–4 at 64, 5 at 68: the fifth completed round reached 68.
+    expect(stats).toMatchObject({ count: 3, lastBpm: 64, bestBpm: 68 });
+
+    const timerOnly = segmentStats([session({ config: { ...defaultConfig, metronome: false } })]).get('seg');
+    expect(timerOnly?.lastBpm).toBeUndefined();
+    expect(timerOnly?.bestBpm).toBeUndefined();
+  });
+
+  it('caps a ramp at the target tempo', () => {
+    const config = { ...defaultConfig, bpm: 80, increaseEvery: 1, increaseBpm: 10, targetBpm: 95 };
+    expect(reachedBpm(session({ config, completedRepetitions: 5 }))).toBe(95);
+    expect(reachedBpm(session({ config, completedRepetitions: 0 }))).toBe(80);
   });
 
   it('writes counts and days in Portuguese', () => {

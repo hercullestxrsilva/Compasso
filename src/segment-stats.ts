@@ -4,13 +4,25 @@ export interface SegmentStats {
   count: number;
   totalSeconds: number;
   lastAt: string;
-  lastBpm: number;
-  bestBpm: number;
+  /** Tempo reached in the most recent session with the metronome on (none for timer-only practice). */
+  lastBpm?: number;
+  bestBpm?: number;
   lastRating?: Rating;
   /** Most recent non-empty session note. */
   lastNote?: string;
   /** Next step written after the most recent session that has one. */
   nextStep?: string;
+}
+
+/**
+ * Tempo of the last round the session completed. A tempo ramp (increaseEvery/increaseBpm) raises it from
+ * config.bpm the same way the practice timeline does, up to targetBpm.
+ */
+export function reachedBpm(session: Session) {
+  const c = session.config;
+  if (!(c.increaseEvery > 0)) return c.bpm;
+  const round = Math.max(0, (session.completedRepetitions || 0) - 1);
+  return Math.min(Math.max(c.bpm, c.targetBpm), c.bpm + Math.floor(round / c.increaseEvery) * c.increaseBpm);
 }
 
 /** Practice summary per segment id, built from the sessions of those segments. */
@@ -26,12 +38,14 @@ export function segmentStats(sessions: Session[]) {
   for (const [segmentId, list] of bySegment) {
     list.sort((a, b) => b.startedAt.localeCompare(a.startedAt));
     const last = list[0];
+    // Timer-only sessions have no clicks, so their configured tempo says nothing about the playing.
+    const tempos = list.filter(s => s.config.metronome !== false).map(reachedBpm);
     stats.set(segmentId, {
       count: list.length,
       totalSeconds: list.reduce((sum, s) => sum + (s.activeSeconds || 0), 0),
       lastAt: last.endedAt || last.startedAt,
-      lastBpm: last.config.bpm,
-      bestBpm: Math.max(...list.map(s => s.config.bpm)),
+      lastBpm: tempos[0],
+      bestBpm: tempos.length ? Math.max(...tempos) : undefined,
       lastRating: list.find(s => s.rating)?.rating,
       lastNote: list.find(s => s.note?.trim())?.note.trim(),
       nextStep: list.find(s => s.nextStep?.trim())?.nextStep?.trim(),

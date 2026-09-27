@@ -5,7 +5,7 @@ import { db, removePiece, storeAsset } from '../db';
 import { statuses, uid, now, type Piece, type PieceStatus } from '../domain';
 import { Modal, Field, Empty, ErrorBox, Badge, errorText, useConfirm, type Notify } from './common';
 import { forgetHistory } from '../annotation-history';
-import { forgetPieceView } from '../score-view';
+import { forgetPieceView, titleFromFileName } from '../score-view';
 
 function scoreCount(count: number) {
   return count === 0 ? 'Sem partitura' : count === 1 ? '1 partitura' : `${count} partituras`;
@@ -18,7 +18,8 @@ export function PieceForm({
 }: {
   piece?: Piece;
   onClose: () => void;
-  onSaved: (id: string) => void;
+  /** scoreId is the score added with the form, if any. */
+  onSaved: (id: string, scoreId?: string) => void;
 }) {
   const [title, setTitle] = useState(piece?.title ?? ''),
     [composer, setComposer] = useState(piece?.composer ?? '');
@@ -36,6 +37,7 @@ export function PieceForm({
           setError('');
           try {
             const id = piece?.id ?? uid();
+            const scoreId = file ? uid() : undefined;
             if (file && !['application/pdf', 'image/png', 'image/jpeg', 'image/webp'].includes(file.type))
               throw new Error('Use uma partitura em PDF, PNG, JPG ou WebP.');
             await db.transaction('rw', [db.pieces, db.assets, db.scores], async () => {
@@ -48,18 +50,18 @@ export function PieceForm({
                 createdAt: piece?.createdAt ?? now(),
                 updatedAt: now(),
               });
-              if (file) {
+              if (file && scoreId) {
                 const asset = await storeAsset(file);
                 await db.scores.add({
-                  id: uid(),
+                  id: scoreId,
                   pieceId: id,
                   assetId: asset.id,
-                  title: file.name,
+                  title: titleFromFileName(file.name),
                   createdAt: now(),
                 });
               }
             });
-            onSaved(id);
+            onSaved(id, scoreId);
             onClose();
           } catch (err) {
             setError(errorText(err));
@@ -115,7 +117,7 @@ export function PieceForm({
             accept="application/pdf,image/png,image/jpeg,image/webp"
             onChange={e => {
               setFile(e.target.files?.[0]);
-              if (!title && e.target.files?.[0]) setTitle(e.target.files[0].name.replace(/\.[^.]+$/, ''));
+              if (!title && e.target.files?.[0]) setTitle(titleFromFileName(e.target.files[0].name));
             }}
           />
         </Field>
