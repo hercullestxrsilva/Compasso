@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   ArrowDown,
@@ -54,6 +54,29 @@ function writeStored(key: string, value: string) {
   }
 }
 
+/**
+ * Today's date (YYYY-MM-DD), kept current: Hoje left open past midnight, or brought back the next morning (a
+ * home-screen app resumed from the background), moves to the new day without a reload.
+ */
+function useToday() {
+  const [today, setToday] = useState(() => localDay());
+  useEffect(() => {
+    const check = () => setToday(localDay());
+    const onVisible = () => {
+      if (!document.hidden) check();
+    };
+    const timer = window.setInterval(check, 30_000);
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', check);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', check);
+    };
+  }, []);
+  return today;
+}
+
 export default function Dashboard({
   onNavigate,
   onPiece,
@@ -79,7 +102,7 @@ export default function Dashboard({
     const stored = Number(readStored(BUDGET_KEY));
     return budgets.includes(stored) ? stored : 30;
   });
-  const today = localDay(),
+  const today = useToday(),
     todaySessions = sessions.filter(s => localDay(new Date(s.startedAt)) === today);
   const minutes = Math.round(todaySessions.reduce((s, r) => s + r.activeSeconds, 0) / 60),
     studying = pieces.filter(p => p.status === 'studying');
@@ -116,7 +139,7 @@ export default function Dashboard({
       <div className="page-heading">
         <div>
           <span className="eyebrow">
-            {new Date()
+            {new Date(`${today}T12:00:00`)
               .toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
               .toLocaleUpperCase('pt-BR')}
           </span>
