@@ -11,6 +11,9 @@ import {
   readFlag,
   saveLastScore,
   saveViewState,
+  scoreAreaHeight,
+  titleFromFileName,
+  exportFileName,
   writeFlag,
 } from '../src/score-view';
 
@@ -88,11 +91,32 @@ describe('zoom', () => {
     expect(fitPageZoom(0, 700, 1.4)).toBe(1);
   });
 
+  it('sizes the score area so the page and its controls fit on screen', () => {
+    // iPad landscape: score area starts 314 px down, bottom bar 56 px.
+    expect(scoreAreaHeight(1024, 314, 56)).toBe(642);
+    // Far down the page: sized as if scrolled part of the way into view.
+    expect(scoreAreaHeight(1024, 900, 56)).toBe(598);
+    // Never smaller than a usable minimum on a short screen.
+    expect(scoreAreaHeight(700, 400, 56)).toBe(420);
+  });
+
   it('keeps manual zoom within limits', () => {
     expect(clampZoom(10)).toBe(3);
     expect(clampZoom(0.1)).toBe(0.4);
     expect(clampZoom(1.234)).toBe(1.23);
     expect(clampZoom(Number.NaN)).toBe(1);
+  });
+});
+
+describe('score file names', () => {
+  it('removes only real file extensions', () => {
+    expect(titleFromFileName('IMSLP12345-Bach.pdf')).toBe('IMSLP12345-Bach');
+    expect(titleFromFileName('Op. 28 No. 4.PDF')).toBe('Op. 28 No. 4');
+    expect(titleFromFileName('foto.jpeg')).toBe('foto');
+    expect(titleFromFileName('Sonata K. 545')).toBe('Sonata K. 545');
+    expect(exportFileName('Sonata K. 545')).toBe('Sonata K. 545-anotada.pdf');
+    expect(exportFileName('Op. 28 No. 4')).toBe('Op. 28 No. 4-anotada.pdf');
+    expect(exportFileName('Prelúdio 1/2.pdf')).toBe('Prelúdio 1-2-anotada.pdf');
   });
 });
 

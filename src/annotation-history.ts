@@ -9,9 +9,51 @@ export type AnnotationOp =
   | { type: 'update'; annotation: Annotation; before: AnnotationChange; after: AnnotationChange };
 
 export interface AnnotationStore {
+  get(id: string): Promise<Annotation | undefined>;
   put(annotation: Annotation): Promise<unknown>;
   delete(id: string): Promise<unknown>;
   update(id: string, changes: AnnotationChange): Promise<unknown>;
+}
+
+/**
+ * The annotations no longer are what the history expects (a restored backup, a deleted version…).
+ * The history is dropped rather than overwriting the current data with old values.
+ */
+export class StaleHistoryError extends Error {
+  constructor() {
+    super('As anotações mudaram desde a última ação.');
+    this.name = 'StaleHistoryError';
+  }
+}
+
+function samePoints(a: Annotation['points'] | undefined, b: Annotation['points'] | undefined) {
+  if (!a || !b) return a === b;
+  return a.length === b.length && a.every((p, i) => p.x === b[i].x && p.y === b[i].y);
+}
+
+function matches(row: Annotation | undefined, expected: AnnotationChange) {
+  if (!row) return false;
+  return (
+    (!('points' in expected) || samePoints(row.points, expected.points)) &&
+    (!('text' in expected) || row.text === expected.text) &&
+    (!('fontSize' in expected) || row.fontSize === expected.fontSize)
+  );
+}
+
+function snapshot({ points, text, fontSize }: Annotation): AnnotationChange {
+  return { points, text, fontSize };
+}
+
+/** Whether the stored row is in the state this op left it in (undo) or found it in (redo). */
+function inExpectedState(row: Annotation | undefined, op: AnnotationOp, direction: 'undo' | 'redo') {
+  switch (op.type) {
+    case 'create':
+      return direction === 'undo' ? matches(row, snapshot(op.annotation)) : !row;
+    case 'delete':
+      return direction === 'undo' ? !row : matches(row, snapshot(op.annotation));
+    case 'update':
+      return matches(row, direction === 'undo' ? op.after : op.before);
+  }
 }
 
 function apply(store: AnnotationStore, op: AnnotationOp, direction: 'undo' | 'redo') {
@@ -84,11 +126,16 @@ export class AnnotationHistory {
     this.busy = true;
     this.changed();
     try {
+      if (!inExpectedState(await store.get(op.annotation.id), op, direction)) {
+        this.past = [];
+        this.future = [];
+        throw new StaleHistoryError();
+      }
       await apply(store, op, direction);
       to.push(op);
       return op;
     } catch (error) {
-      from.push(op);
+      if (!(error instanceof StaleHistoryError)) from.push(op);
       throw error;
     } finally {
       this.busy = false;

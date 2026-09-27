@@ -79,6 +79,16 @@
   display: none;
   margin-right: 6px;
 }
+.score-viewer .score-pager > .score-pager-short {
+  min-width: 48px;
+}
+.score-history {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+}
 @container score (min-width: 620px) {
   .score-tool {
     min-width: 52px;
@@ -87,8 +97,7 @@
   .score-tool-label {
     display: block;
   }
-}
-@container score (min-width: 900px) {
+  /* Page turns stay reachable by touch even when the bottom bar is below the fold. */
   .score-viewer .score-pager-top {
     display: flex;
   }
@@ -203,6 +212,11 @@
   color: var(--ink);
   font-weight: 600;
 }
+.score-subbar .btn[aria-pressed='true'] {
+  border-color: var(--green);
+  background: var(--green);
+  color: #fff;
+}
 .score-warning {
   display: inline-flex;
   align-items: center;
@@ -291,6 +305,9 @@
   position: relative;
   touch-action: pan-x pan-y;
   scrollbar-gutter: stable;
+}
+/* Outside full screen a swipe that reaches the end of the page keeps scrolling to the trechos below. */
+.score-viewer.is-fullscreen .score-scroll {
   overscroll-behavior: contain;
 }
 .score-viewer .annotation-selected {
@@ -312,6 +329,13 @@
 }
 .segment-mark.interactive:hover .segment-mark-box {
   fill-opacity: 0.16;
+}
+/* The trecho opened with "Ver" or being practised. */
+.segment-mark.is-target .segment-mark-box {
+  fill: #e9af58;
+  fill-opacity: 0.12;
+  stroke: #bd8023;
+  stroke-opacity: 1;
 }
 .segment-mark:focus-visible .segment-mark-box {
   stroke: #0e7f89;
@@ -505,19 +529,8 @@
   color: var(--ink);
   font-size: 0.85rem;
 }
-.marking-banner {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 10px;
-  padding: 8px 14px;
-  border-bottom: 1px solid #cfe3e0;
-  background: #e8f4f1;
-  color: #184e4f;
-  font-size: 0.82rem;
-}
-.marking-banner span {
-  flex: 1 1 220px;
+.score-version .score-versions-button {
+  flex-shrink: 0;
 }
 .piece-detail .score-import-big {
   min-height: 52px;
@@ -677,10 +690,30 @@
   font-size: 0.72rem;
 }
 @media (pointer: coarse) {
-  .piece-detail .segment-card .icon-btn,
-  .piece-detail .task-row .icon-btn,
+  .score-viewer .btn.small,
+  .piece-detail .btn.small,
+  .score-viewer .link-btn,
+  .score-viewer .score-subbar .link-btn,
+  .piece-detail .link-btn,
+  .piece-detail select,
+  .piece-detail .inline-form input,
+  .score-version select,
+  .task-form select,
+  .version-rename input {
+    min-height: 44px;
+  }
+  .piece-detail .icon-btn,
   .version-list .icon-btn {
     width: 44px;
     height: 44px;
+  }
+  /* The box stays small; the invisible area around it takes the tap. */
+  .piece-detail .check-button {
+    position: relative;
+  }
+  .piece-detail .check-button::before {
+    content: '';
+    position: absolute;
+    inset: -11px;
   }
 }

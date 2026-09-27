@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   AnnotationHistory,
+  StaleHistoryError,
   forgetHistory,
   historyFor,
   type AnnotationChange,
@@ -11,6 +12,9 @@ import type { Annotation } from '../src/domain';
 function memoryStore() {
   const rows = new Map<string, Annotation>();
   const store: AnnotationStore = {
+    async get(id) {
+      return structuredClone(rows.get(id));
+    },
     async put(annotation) {
       rows.set(annotation.id, structuredClone(annotation));
     },
@@ -104,9 +108,11 @@ describe('annotation history', () => {
   it('clears the redo stack on a new action and keeps a failed step', async () => {
     const { store } = memoryStore();
     const history = new AnnotationHistory();
+    await store.put(annotation('a'));
     history.record({ type: 'create', annotation: annotation('a') });
     await history.undo(store);
     expect(history.canRedo).toBe(true);
+    await store.put(annotation('b'));
     history.record({ type: 'create', annotation: annotation('b') });
     expect(history.canRedo).toBe(false);
 
@@ -128,11 +134,43 @@ describe('annotation history', () => {
     stop();
     expect(calls).toBe(3);
     const { rows, store } = memoryStore();
-    await store.put(annotation('a'));
+    for (const id of ['a', 'b', 'c']) await store.put(annotation(id));
     await history.undo(store);
     await history.undo(store);
     expect(history.canUndo).toBe(false);
-    expect(rows.has('a')).toBe(true);
+    expect([...rows.keys()]).toEqual(['a']);
+  });
+
+  it('drops the history instead of overwriting annotations that changed elsewhere', async () => {
+    const { rows, store } = memoryStore();
+    const history = new AnnotationHistory();
+    const a = annotation('a');
+    await store.put(a);
+    history.record({ type: 'create', annotation: a });
+    const moved = [
+      { x: 0.5, y: 0.5 },
+      { x: 0.6, y: 0.6 },
+    ];
+    await store.update('a', { points: moved });
+    history.record({ type: 'update', annotation: a, before: { points: a.points }, after: { points: moved } });
+    await store.delete('a');
+    history.record({ type: 'delete', annotation: { ...a, points: moved } });
+
+    // A backup restored in the meantime brings "a" back with other points.
+    const restored = { ...a, points: [{ x: 0.9, y: 0.9 }] };
+    await store.put(restored);
+    await expect(history.undo(store)).rejects.toBeInstanceOf(StaleHistoryError);
+    expect(rows.get('a')).toEqual(restored);
+    expect(history.canUndo).toBe(false);
+    expect(history.canRedo).toBe(false);
+
+    // Undoing a move checks the points it left behind.
+    const b = annotation('b');
+    await store.put({ ...b, points: moved });
+    history.record({ type: 'update', annotation: b, before: { points: b.points }, after: { points: moved } });
+    await store.update('b', { points: [{ x: 0, y: 0 }] });
+    await expect(history.undo(store)).rejects.toBeInstanceOf(StaleHistoryError);
+    expect(rows.get('b')?.points).toEqual([{ x: 0, y: 0 }]);
   });
 
   it('keeps one history per score until the score is forgotten', () => {

@@ -71,13 +71,20 @@ export function movePoints(points: Point[], requestedX: number, requestedY: numb
 export type FocusContext = 'lead-in' | 'system';
 /** Share of the page width added before the trecho: roughly one bar of a 4-bar system. */
 export const LEAD_IN = 0.22;
+/** A trecho starting left of this begins a system, so the bar before it ends the system above. */
+export const SYSTEM_START = 0.15;
+/** Most of the page height taken from the system above (a piano system is about 0.12–0.18). */
+const SYSTEM_ABOVE = 0.2;
 const MARGIN = 0.025;
 
 /** The part of the page shown when focusing on a trecho, in normalized page coordinates. */
 export function focusCrop(region: Region, context: FocusContext = 'lead-in') {
-  const left = context === 'system' ? 0 : Math.max(0, region.x - LEAD_IN);
-  const right = context === 'system' ? 1 : Math.min(1, region.x + region.w + MARGIN);
-  const top = Math.max(0, region.y - MARGIN);
+  const startsSystem = context === 'lead-in' && region.x < SYSTEM_START && region.y > 2 * MARGIN;
+  // Full width, so the end of the system above stays visible next to the start of the trecho.
+  const left = context === 'system' || startsSystem ? 0 : Math.max(0, region.x - LEAD_IN);
+  const right = context === 'system' || startsSystem ? 1 : Math.min(1, region.x + region.w + MARGIN);
+  const above = startsSystem ? Math.min(region.h, SYSTEM_ABOVE) : 0;
+  const top = Math.max(0, region.y - above - MARGIN);
   const bottom = Math.min(1, region.y + region.h + MARGIN);
   return { x: left, y: top, w: Math.max(0.01, right - left), h: Math.max(0.01, bottom - top) };
 }

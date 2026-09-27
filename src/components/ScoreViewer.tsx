@@ -46,15 +46,22 @@ import {
   toOverlay,
   type FocusContext,
 } from '../annotations';
-import { historyFor, type AnnotationOp, type AnnotationStore } from '../annotation-history';
+import {
+  historyFor,
+  StaleHistoryError,
+  type AnnotationOp,
+  type AnnotationStore,
+} from '../annotation-history';
 import {
   clampZoom,
+  exportFileName,
   fitPageZoom,
   isEditableTarget,
   loadViewState,
   pageKeyAction,
   readFlag,
   saveViewState,
+  scoreAreaHeight,
   writeFlag,
   MAX_ZOOM,
   MIN_ZOOM,
@@ -94,6 +101,7 @@ const kindLabels: Record<Annotation['kind'], string> = {
 };
 
 const annotationStore: AnnotationStore = {
+  get: id => db.annotations.get(id),
   put: annotation => db.annotations.put(annotation),
   delete: id => db.annotations.delete(id),
   update: (id, changes) => db.annotations.update(id, changes),
@@ -142,6 +150,15 @@ export interface ScoreViewerProps {
   onSegmentClick?: (segmentId: string) => void;
   /** Selects the region tool each time this number changes (e.g. "Marcar na partitura" on a trecho). */
   requestRegion?: number;
+  /** Replaces the region tool's hint, e.g. with the name of the trecho being marked. */
+  regionPrompt?: string;
+  /** Called when the region tool is left without drawing a region. */
+  onRegionCancel?: () => void;
+  /**
+   * targetRegion is compared by value, so a fresh copy of the same region does nothing. Change this number
+   * to go to the target and focus on it again (e.g. "Ver" pressed twice).
+   */
+  focusRequest?: number;
 }
 export default function ScoreViewer({
   score,
@@ -152,6 +169,9 @@ export default function ScoreViewer({
   segments,
   onSegmentClick,
   requestRegion,
+  regionPrompt,
+  onRegionCancel,
+  focusRequest,
 }: ScoreViewerProps) {
   const asset = useLiveQuery(() => db.assets.get(score.assetId), [score.assetId]);
   const isPdf = !!asset && (asset.mime === 'application/pdf' || asset.name.toLowerCase().endsWith('.pdf'));
@@ -179,10 +199,12 @@ export default function ScoreViewer({
     [movePreview, setMovePreview] = useState<{ id: string; points: Point[] } | null>(null),
     [editingText, setEditingText] = useState<Annotation | null>(null);
   const [focus, setFocus] = useState(false),
-    [focusContext, setFocusContext] = useState<FocusContext>('lead-in');
+    [focusContext, setFocusContext] = useState<FocusContext>('lead-in'),
+    [targetHidden, setTargetHidden] = useState(false);
   const [exporting, setExporting] = useState(false),
     [fullscreen, setFullscreen] = useState(false),
-    [menuOpen, setMenuOpen] = useState(false);
+    [menuOpen, setMenuOpen] = useState(false),
+    [limit, setLimit] = useState<number>();
   const [pencilOnly, setPencilOnly] = useState(() => readFlag(PENCIL_ONLY_KEY) ?? false),
     [pencilOffer, setPencilOffer] = useState(false),
     [showSegments, setShowSegments] = useState(() => readFlag(SHOW_SEGMENTS_KEY) ?? true);
@@ -193,14 +215,17 @@ export default function ScoreViewer({
     svg = useRef<SVGSVGElement>(null),
     menu = useRef<HTMLDivElement>(null),
     menuButton = useRef<HTMLButtonElement>(null),
-    fullscreenButton = useRef<HTMLButtonElement>(null);
+    fullscreenButton = useRef<HTMLButtonElement>(null),
+    bottomBar = useRef<HTMLDivElement>(null);
   const drawing = useRef<Point[]>([]),
     pointer = useRef<number | null>(null),
     moving = useRef<{ pointerId: number; annotation: Annotation; start: Point } | null>(null),
     penDown = useRef(false),
     pinching = useRef(false),
     anchor = useRef<Anchor | null>(null),
-    renderer = useRef<{ key: string; renderer: PdfRenderer } | null>(null);
+    renderer = useRef<{ key: string; renderer: PdfRenderer } | null>(null),
+    appliedTarget = useRef<{ region?: Region; request?: number }>({}),
+    penOfferQueued = useRef(false);
   const history = historyFor(score.id);
   useSyncExternalStore(history.subscribe, () => history.version);
   const annotations =
@@ -221,13 +246,16 @@ export default function ScoreViewer({
     setSelectedId(null);
     setMovePreview(null);
     setFocus(false);
+    setTargetHidden(false);
   }
 
-  const effectiveZoom = fit === 'width' ? 1 : fit === 'page' ? fitPageZoom(box.w, box.h, ratio) : zoom;
-  const renderWidth = Math.max(1, Math.round(box.w * effectiveZoom));
-  const region = targetRegion?.page === page ? targetRegion : undefined;
+  const region = !targetHidden && targetRegion?.page === page ? targetRegion : undefined;
   // Focus shows a crop of the page; the page itself is rendered larger so the crop stays sharp.
   const crop = focus && region ? focusCrop(region, focusContext) : null;
+  // "Página inteira" fits what is shown: the whole page, or the focused trecho.
+  const shownRatio = crop ? (ratio * crop.h) / crop.w : ratio;
+  const effectiveZoom = fit === 'width' ? 1 : fit === 'page' ? fitPageZoom(box.w, box.h, shownRatio) : zoom;
+  const renderWidth = Math.max(1, Math.round(box.w * effectiveZoom));
   const pageWidth = Math.round(crop ? renderWidth / crop.w : renderWidth);
   /** Overlay units per CSS pixel, to keep labels and hit areas the same size at any zoom. */
   const unit = 1000 / pageWidth;
@@ -239,12 +267,20 @@ export default function ScoreViewer({
     setMovePreview(null);
     moving.current = null;
   }, [page]);
+  // By value: a live query that returns a fresh copy of the same region (Practice saving its settings)
+  // must not pull the student back to the trecho after they turned the page or left focus.
   useEffect(() => {
-    if (targetRegion) {
-      setPage(targetRegion.page);
-      setFocus(true);
+    if (!targetRegion) {
+      appliedTarget.current = {};
+      return;
     }
-  }, [targetRegion]);
+    const last = appliedTarget.current;
+    if (sameRegion(last.region, targetRegion) && last.request === focusRequest) return;
+    appliedTarget.current = { region: targetRegion, request: focusRequest };
+    setTargetHidden(false);
+    setPage(targetRegion.page);
+    setFocus(true);
+  }, [targetRegion, focusRequest]);
   const regionRequest = useRef(requestRegion);
   useEffect(() => {
     if (requestRegion === regionRequest.current) return;
@@ -255,16 +291,20 @@ export default function ScoreViewer({
 
   // Measure the visible area. Resizes are debounced so dragging a window does not re-render every frame.
   useLayoutEffect(() => {
-    const element = container.current;
-    if (!element) return;
+    const element = container.current,
+      root = viewer.current;
+    if (!element || !root) return;
     const measure = () => {
       const style = getComputedStyle(element);
       const padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
       const padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
-      const maxHeight = parseFloat(style.maxHeight);
-      const height = Number.isFinite(maxHeight)
-        ? Math.min(maxHeight, window.innerHeight)
-        : element.clientHeight;
+      // In full screen the flex layout gives the score all the room left by the bars.
+      let height = element.clientHeight;
+      if (!root.classList.contains('is-fullscreen')) {
+        const top = element.getBoundingClientRect().top + window.scrollY;
+        height = scoreAreaHeight(window.innerHeight, top, bottomBar.current?.offsetHeight ?? 0);
+        setLimit(current => (current === height ? current : height));
+      }
       const w = Math.max(240, Math.floor(element.clientWidth - padX));
       const h = Math.max(160, Math.floor(height - padY));
       setBox(current => (current.w === w && current.h === h ? current : { w, h }));
@@ -277,6 +317,8 @@ export default function ScoreViewer({
     };
     const observer = new ResizeObserver(schedule);
     observer.observe(element);
+    // The viewer grows when a bar appears above the score (tools, notices), which moves the score down.
+    observer.observe(root);
     window.addEventListener('resize', schedule);
     return () => {
       observer.disconnect();
@@ -419,16 +461,20 @@ export default function ScoreViewer({
       };
     };
     const limit = (base: number, scale: number) => clampZoom(base * scale) / base;
-    const spread = (touches: TouchList) =>
+    // iPadOS lists the Apple Pencil in TouchList too: pencil plus a resting finger or palm is not a pinch.
+    const fingers = (touches: TouchList) =>
+      Array.from(touches).filter(t => (t as Touch & { touchType?: string }).touchType !== 'stylus');
+    const spread = (touches: Touch[]) =>
       Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
     const onTouchStart = (event: TouchEvent) => {
-      if (event.touches.length !== 2) return;
+      const touches = fingers(event.touches);
+      if (touches.length !== 2 || penDown.current) return;
       const pin = pinFor(
-        (event.touches[0].clientX + event.touches[1].clientX) / 2,
-        (event.touches[0].clientY + event.touches[1].clientY) / 2,
+        (touches[0].clientX + touches[1].clientX) / 2,
+        (touches[0].clientY + touches[1].clientY) / 2,
       );
       if (!pin) return;
-      // A second finger turns a stroke that just started into a pinch.
+      // A second finger turns a finger stroke that just started into a pinch.
       pinching.current = true;
       pointer.current = null;
       drawing.current = [];
@@ -438,21 +484,23 @@ export default function ScoreViewer({
         setMovePreview(null);
       }
       pinch = {
-        distance: Math.max(1, spread(event.touches)),
+        distance: Math.max(1, spread(touches)),
         base: live.current.effectiveZoom,
         pin,
         scale: 1,
       };
     };
     const onTouchMove = (event: TouchEvent) => {
-      if (!pinch || event.touches.length !== 2) return;
+      const touches = fingers(event.touches);
+      if (!pinch || touches.length !== 2) return;
       if (event.cancelable) event.preventDefault();
-      pinch.scale = limit(pinch.base, spread(event.touches) / pinch.distance);
+      pinch.scale = limit(pinch.base, spread(touches) / pinch.distance);
       setGesture({ scale: pinch.scale, x: pinch.pin.fx, y: pinch.pin.fy });
     };
     const onTouchEnd = (event: TouchEvent) => {
-      if (event.touches.length === 0) pinching.current = false;
-      if (!pinch || event.touches.length >= 2) return;
+      const left = fingers(event.touches).length;
+      if (left === 0) pinching.current = false;
+      if (!pinch || left >= 2) return;
       const done = pinch;
       pinch = null;
       setGesture(null);
@@ -479,6 +527,12 @@ export default function ScoreViewer({
     };
     // Safari's own page zoom would fight the score zoom.
     const stopNativeZoom = (event: Event) => event.preventDefault();
+    // A pencil lifted outside the score (or taken over by scrolling) is no longer down.
+    const penUp = (event: PointerEvent) => {
+      if (event.pointerType === 'pen') penDown.current = false;
+    };
+    window.addEventListener('pointerup', penUp);
+    window.addEventListener('pointercancel', penUp);
     element.addEventListener('touchstart', onTouchStart, { passive: true });
     element.addEventListener('touchmove', onTouchMove, { passive: false });
     element.addEventListener('touchend', onTouchEnd);
@@ -494,6 +548,8 @@ export default function ScoreViewer({
       element.removeEventListener('wheel', onWheel);
       element.removeEventListener('gesturestart', stopNativeZoom);
       element.removeEventListener('gesturechange', stopNativeZoom);
+      window.removeEventListener('pointerup', penUp);
+      window.removeEventListener('pointercancel', penUp);
       if (wheel) window.clearTimeout(wheel.timer);
     };
   }, []);
@@ -525,7 +581,9 @@ export default function ScoreViewer({
     document.body.style.overflow = 'hidden';
     const restoreInert = inertOutside(viewer.current);
     const onFullscreenChange = () => {
-      if (!document.fullscreenElement) setFullscreen(false);
+      // The browser takes Esc to leave native full screen even with a dialog open. Keep the score covering
+      // the window (CSS mode) so only the dialog is affected; its own Esc or "Sair" close the rest.
+      if (!document.fullscreenElement && !document.querySelector('dialog[open]')) setFullscreen(false);
     };
     document.addEventListener('fullscreenchange', onFullscreenChange);
     return () => {
@@ -545,7 +603,8 @@ export default function ScoreViewer({
         menuButton.current?.focus();
         return;
       }
-      if (document.fullscreenElement === viewer.current) void document.exitFullscreen().catch(() => {});
+      if (document.fullscreenElement === document.documentElement)
+        void document.exitFullscreen().catch(() => {});
       setFullscreen(false);
     };
     window.addEventListener('keydown', onKeyDown, true);
@@ -592,34 +651,46 @@ export default function ScoreViewer({
     setHiddenLayers(list => list.filter(l => l !== op.annotation.layer));
     if (op.annotation.page !== page) changePage(op.annotation.page);
   };
-  const undo = async () => {
+  const step = async (direction: 'undo' | 'redo') => {
     try {
-      showOp(await history.undo(annotationStore));
+      showOp(await (direction === 'undo' ? history.undo(annotationStore) : history.redo(annotationStore)));
     } catch (err) {
-      notify(`Não foi possível desfazer. ${errorText(err)}`, 'error');
+      if (err instanceof StaleHistoryError)
+        notify(
+          'As anotações desta partitura mudaram por fora (por exemplo, com um backup restaurado). O histórico de desfazer recomeça a partir de agora.',
+          'info',
+        );
+      else
+        notify(
+          `Não foi possível ${direction === 'undo' ? 'desfazer' : 'refazer'}. ${errorText(err)}`,
+          'error',
+        );
     }
   };
-  const redo = async () => {
-    try {
-      showOp(await history.redo(annotationStore));
-    } catch (err) {
-      notify(`Não foi possível refazer. ${errorText(err)}`, 'error');
-    }
-  };
+  const undo = () => step('undo');
+  const redo = () => step('redo');
 
   const keys = useRef<(event: KeyboardEvent) => void>(() => {});
   useEffect(() => {
     keys.current = event => {
-      if (event.defaultPrevented || event.isComposing) return;
+      if (event.defaultPrevented || event.isComposing || menuOpen) return;
       if (isEditableTarget(event.target) || document.querySelector('dialog[open]')) return;
+      const focused = document.activeElement;
+      const nearScore =
+        fullscreen || !focused || focused === document.body || !!viewer.current?.contains(focused);
       const key = event.key.toLowerCase();
       if ((event.ctrlKey || event.metaKey) && !event.altKey && (key === 'z' || key === 'y')) {
+        // Only while annotating or working in the viewer: Ctrl+Z after typing a note elsewhere on the page
+        // must not silently remove the last mark from the score.
+        if (!annotating && !nearScore) return;
         event.preventDefault();
         void (key === 'y' || event.shiftKey ? redo() : undo());
         return;
       }
       const action = pageKeyAction(event);
-      if (!action) return;
+      // Pedals always send ← and →. ↑ ↓ and PageUp/PageDown keep scrolling the page unless the score has
+      // the focus (or fills the screen), so the trechos and notes below it stay reachable by keyboard.
+      if (!action || (action.scrollFirst && !nearScore)) return;
       event.preventDefault();
       turnPage(action);
     };
@@ -712,6 +783,7 @@ export default function ScoreViewer({
     setMovePreview(null);
   };
   const chooseTool = (next: Tool) => {
+    if (tool === 'region' && next !== 'region') onRegionCancel?.();
     setTool(next);
     setMenuOpen(false);
     if (focus) setFocus(false);
@@ -728,9 +800,19 @@ export default function ScoreViewer({
     setPencilOffer(false);
     writeFlag(PENCIL_ONLY_KEY, value);
   };
-  const notePen = () => {
+  const notePen = (pointerId: number) => {
     penDown.current = true;
-    if (!pencilOnly && readFlag(PENCIL_ONLY_KEY) === undefined) setPencilOffer(true);
+    if (pencilOnly || penOfferQueued.current || readFlag(PENCIL_ONLY_KEY) !== undefined) return;
+    penOfferQueued.current = true;
+    // Offered once the stroke ends: a bar appearing above the score now would move the page under the pencil.
+    const offer = (event: PointerEvent) => {
+      if (event.pointerId !== pointerId) return;
+      window.removeEventListener('pointerup', offer);
+      window.removeEventListener('pointercancel', offer);
+      setPencilOffer(true);
+    };
+    window.addEventListener('pointerup', offer);
+    window.addEventListener('pointercancel', offer);
   };
   const exportScore = async () => {
     if (!asset) return;
@@ -739,7 +821,7 @@ export default function ScoreViewer({
       const { exportAnnotated } = await import('../score-export');
       download(
         await exportAnnotated(asset, await db.annotations.where('scoreId').equals(score.id).toArray()),
-        `${score.title.replace(/\.[^.]+$/, '')}-anotada.pdf`,
+        exportFileName(score.title),
       );
       setMenuOpen(false);
     } catch (err) {
@@ -750,8 +832,9 @@ export default function ScoreViewer({
   };
   const toggleFullscreen = async () => {
     setMenuOpen(false);
+    const root = document.documentElement;
     if (fullscreen) {
-      if (document.fullscreenElement === viewer.current)
+      if (document.fullscreenElement === root)
         try {
           await document.exitFullscreen();
         } catch {
@@ -760,10 +843,12 @@ export default function ScoreViewer({
       setFullscreen(false);
       return;
     }
+    // The whole document goes full screen and the viewer covers it with CSS, so notices, confirmations
+    // and the practice screen's messages (rendered outside the viewer) stay visible.
     setFullscreen(true);
-    if (viewer.current?.requestFullscreen)
+    if (root.requestFullscreen)
       try {
-        await viewer.current.requestFullscreen();
+        await root.requestFullscreen();
       } catch {
         /* CSS mode supports iPad Safari */
       }
@@ -782,7 +867,14 @@ export default function ScoreViewer({
       >
         <ChevronLeft size={20} />
       </button>
-      <span>{pageLabel}</span>
+      {position === 'superior' ? (
+        <span className="score-pager-short" aria-hidden>
+          {page}
+          {pages ? ` / ${pages}` : ''}
+        </span>
+      ) : (
+        <span>{pageLabel}</span>
+      )}
       <button
         type="button"
         className="icon-btn"
@@ -798,16 +890,19 @@ export default function ScoreViewer({
     tool === 'select' || tool === 'pen' || tool === 'highlight' || tool === 'text' || tool === 'erase';
   const drawingTool = tool === 'pen' || tool === 'highlight' || tool === 'text';
   const interactive = tool === 'select' || tool === 'erase';
-  const touchAction = tool === 'navigate' || pencilOnly ? 'pan-x pan-y' : 'none';
+  // Marking a trecho leaves no ink, so a finger may draw the rectangle even in "Só Apple Pencil" mode.
+  const fingerDraws = !pencilOnly || tool === 'region';
+  const touchAction = tool === 'navigate' || !fingerDraws ? 'pan-x pan-y' : 'none';
   const visibleAnnotations = annotations.filter(a => !hiddenLayers.includes(a.layer));
-  const segmentsHere =
-    showSegments && segments
-      ? segments.flatMap(s =>
-          s.regions
-            .filter(r => r.page === page && !sameRegion(r, region))
-            .map((r, i) => ({ key: `${s.id}-${i}`, id: s.id, title: s.title, region: r })),
-        )
-      : [];
+  const segmentsHere = segments
+    ? segments.flatMap(s =>
+        s.regions
+          .map((r, i) => ({ key: `${s.id}-${i}`, id: s.id, title: s.title, region: r }))
+          .filter(m => m.region.page === page && (showSegments || sameRegion(m.region, region))),
+      )
+    : [];
+  // The trecho opened with "Ver" is drawn in gold as one of the marks, so it stays tappable.
+  const targetMarked = segmentsHere.some(m => sameRegion(m.region, region));
   const segmentsClickable = tool === 'navigate' && !!onSegmentClick && !focus;
 
   return (
@@ -818,7 +913,7 @@ export default function ScoreViewer({
       aria-label={fullscreen ? `Partitura em tela cheia: ${score.title}` : `Partitura: ${score.title}`}
     >
       <div className="score-toolbar">
-        <div className="score-toolset" role="toolbar" aria-label="Ferramentas da partitura">
+        <div className="score-toolset" role="group" aria-label="Ferramentas da partitura">
           {tools.map(([key, Icon, short, label]) => (
             <button
               key={key}
@@ -910,7 +1005,8 @@ export default function ScoreViewer({
               </label>
             </fieldset>
             <p className="score-menu-hint">
-              Teclado ou pedal: → e ← viram a página; ↓ e ↑ rolam a página ampliada antes de virar.
+              Teclado ou pedal: → e ← viram a página. ↓ e ↑ rolam a página ampliada e depois viram, quando
+              você está na partitura ou em tela cheia.
             </p>
           </div>
         )}
@@ -1047,8 +1143,8 @@ export default function ScoreViewer({
           )}
           {tool === 'region' && (
             <>
-              <span className="score-hint">
-                Arraste um retângulo ao redor do trecho que você quer praticar.
+              <span className={`score-hint ${regionPrompt ? 'strong' : ''}`}>
+                {regionPrompt ?? 'Arraste um retângulo ao redor do trecho que você quer praticar.'}
               </span>
               <button type="button" className="link-btn" onClick={() => chooseTool('navigate')}>
                 Cancelar
@@ -1076,6 +1172,16 @@ export default function ScoreViewer({
                   Sistema inteiro
                 </button>
               )}
+              <button
+                type="button"
+                className="link-btn"
+                onClick={() => {
+                  setTargetHidden(true);
+                  setFocus(false);
+                }}
+              >
+                Fechar trecho
+              </button>
             </>
           )}
         </div>
@@ -1089,7 +1195,7 @@ export default function ScoreViewer({
           <span className="hint">O arquivo original continua salvo.</span>
         </div>
       )}
-      <div className="score-scroll" ref={container}>
+      <div className="score-scroll" ref={container} style={{ maxHeight: fullscreen ? undefined : limit }}>
         <div
           ref={sheet}
           className="score-sheet"
@@ -1126,11 +1232,11 @@ export default function ScoreViewer({
               aria-label="Anotações e trechos"
               style={{ touchAction, pointerEvents: focus ? 'none' : undefined }}
               onPointerDownCapture={e => {
-                if (e.pointerType === 'pen') notePen();
+                if (e.pointerType === 'pen') notePen(e.pointerId);
               }}
               onPointerDown={e => {
                 if (tool === 'navigate' || focus || pointer.current !== null || pinching.current) return;
-                if (pencilOnly && e.pointerType === 'touch') return;
+                if (!fingerDraws && e.pointerType === 'touch') return;
                 if (tool === 'erase') return;
                 if (tool === 'select') {
                   setSelectedId(null);
@@ -1213,10 +1319,11 @@ export default function ScoreViewer({
                 const rect = overlayRect(mark.region, ratio);
                 const labelSize = 12 * unit;
                 const label = mark.title.length > 32 ? `${mark.title.slice(0, 31)}…` : mark.title;
+                const target = sameRegion(mark.region, region);
                 return (
                   <g
                     key={mark.key}
-                    className={`segment-mark ${segmentsClickable ? 'interactive' : ''}`}
+                    className={`segment-mark ${segmentsClickable ? 'interactive' : ''} ${target ? 'is-target' : ''}`}
                     role={segmentsClickable ? 'button' : undefined}
                     tabIndex={segmentsClickable ? 0 : undefined}
                     aria-label={segmentsClickable ? `Trecho ${mark.title}` : undefined}
@@ -1235,8 +1342,8 @@ export default function ScoreViewer({
                       {...rect}
                       rx={4 * unit}
                       className="segment-mark-box"
-                      strokeWidth={1.5 * unit}
-                      strokeDasharray={`${6 * unit} ${4 * unit}`}
+                      strokeWidth={(target ? 2 : 1.5) * unit}
+                      strokeDasharray={`${(target ? 8 : 6) * unit} ${4 * unit}`}
                     />
                     <text
                       className="segment-mark-label"
@@ -1317,7 +1424,7 @@ export default function ScoreViewer({
                   </g>
                 );
               })}
-              {region && (
+              {region && !targetMarked && (
                 <rect
                   {...overlayRect(region, ratio)}
                   fill="#e9af58"
@@ -1360,8 +1467,33 @@ export default function ScoreViewer({
           </div>
         </div>
       </div>
-      <div className="page-controls score-bottom">
+      <div className="page-controls score-bottom" ref={bottomBar}>
         <div className="score-pager">{pager('inferior')}</div>
+        {/* Kept in reach after going back to Navegar; the tool row has no room left on a tablet. */}
+        {!annotating && (history.canUndo || history.canRedo) && (
+          <div className="score-history" role="group" aria-label="Histórico de anotações">
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Desfazer última anotação"
+              title="Desfazer (Ctrl+Z)"
+              disabled={!history.canUndo}
+              onClick={() => void undo()}
+            >
+              <Undo2 size={18} />
+            </button>
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Refazer anotação"
+              title="Refazer (Ctrl+Shift+Z)"
+              disabled={!history.canRedo}
+              onClick={() => void redo()}
+            >
+              <Redo2 size={18} />
+            </button>
+          </div>
+        )}
         {fullscreen && fullscreenOverlay && <div className="score-overlay-slot">{fullscreenOverlay}</div>}
         <div className="score-zoom" role="group" aria-label="Tamanho da partitura">
           <button

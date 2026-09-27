@@ -100,10 +100,23 @@ describe('focus crop', () => {
   });
 
   it('stops at the page edge and can show the whole system', () => {
-    expect(focusCrop({ ...region, x: 0.05 }).x).toBe(0);
+    expect(focusCrop({ ...region, x: 0.18 }).x).toBe(0);
     const system = focusCrop(region, 'system');
     expect(system.x).toBe(0);
     expect(system.w).toBe(1);
+    expect(system.y).toBeCloseTo(0.275);
+  });
+
+  it('shows the end of the system above when the trecho starts a system', () => {
+    const crop = focusCrop({ page: 1, x: 0.08, y: 0.4, w: 0.5, h: 0.12 });
+    expect(crop.x).toBe(0);
+    expect(crop.w).toBe(1);
+    expect(crop.y).toBeCloseTo(0.255);
+    expect(crop.y + crop.h).toBeCloseTo(0.545);
+    // A tall trecho does not pull in more than about one system above it.
+    expect(focusCrop({ page: 1, x: 0.05, y: 0.5, w: 0.9, h: 0.4 }).y).toBeCloseTo(0.275);
+    // At the top of the page there is nothing above to show.
+    expect(focusCrop({ page: 1, x: 0.05, y: 0.02, w: 0.5, h: 0.1 }).y).toBe(0);
   });
 
   it('compares regions by value', () => {
