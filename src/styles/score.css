@@ -230,6 +230,10 @@
   background: var(--accent);
   color: var(--accent-ink);
 }
+.score-subbar .btn.secondary[aria-pressed='true']:active:not(:disabled) {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+}
 .score-warning {
   display: inline-flex;
   align-items: center;

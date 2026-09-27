@@ -103,7 +103,7 @@
   --chart-grid: #e6eeef;
   --chart-cross: #c3d3d6;
   --chart-axis: #5c6e73;
-  --chart-bar: #b0cccd;
+  --chart-bar: #8fb7b9;
   --chart-bar-met: #5f9ea0;
   --chart-spark: #7fa9ab;
   --chart-goal: #94640f;
@@ -266,7 +266,7 @@
     --chart-grid: #22373b;
     --chart-cross: #3a5256;
     --chart-axis: #98acaf;
-    --chart-bar: #2f5557;
+    --chart-bar: #4a7d7f;
     --chart-bar-met: #3f8a86;
     --chart-spark: #5e9c99;
     --chart-goal: #e8b469;
@@ -360,7 +360,7 @@
   --chart-grid: #22373b;
   --chart-cross: #3a5256;
   --chart-axis: #98acaf;
-  --chart-bar: #2f5557;
+  --chart-bar: #4a7d7f;
   --chart-bar-met: #3f8a86;
   --chart-spark: #5e9c99;
   --chart-goal: #e8b469;
@@ -2251,8 +2251,9 @@ input[type='color'] {
     border-color: var(--ink-muted);
   }
   .btn.light:hover:not(:disabled) {
-    background: var(--surface);
-    border-color: var(--surface);
+    background: var(--feature-btn);
+    border-color: var(--feature-ink);
+    color: var(--feature-btn-ink);
   }
   .btn.danger:hover:not(:disabled) {
     background: var(--danger-ink);
@@ -2311,7 +2312,9 @@ input[type='color'] {
   border-color: var(--line-strong);
 }
 .btn.light:active:not(:disabled) {
-  background: var(--surface);
+  background: var(--feature-muted);
+  border-color: var(--feature-muted);
+  color: var(--feature-btn-ink);
 }
 .btn.danger:active:not(:disabled) {
   background: var(--danger-ink);
