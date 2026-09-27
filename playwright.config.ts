@@ -33,6 +33,8 @@ export default defineConfig({
     // 12.9" iPad in portrait: CSS size of the screen, touch input.
     { name: 'ipad', use: { viewport: { width: 1024, height: 1366 }, hasTouch: true, deviceScaleFactor: 2 } },
   ],
+  // Loads every screen and the PDF reader once, after the server starts and before any test (see the file).
+  globalSetup: './e2e/global-setup.ts',
   webServer: {
     // The PDF.js decoders and fonts (public/pdfjs) are prepared first, as `npm run dev` does.
     command: `node scripts/pdf-assets.mjs && npx vite --config e2e/vite.config.ts --host 127.0.0.1 --port ${PORT} --strictPort`,

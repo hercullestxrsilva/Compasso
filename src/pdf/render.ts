@@ -34,6 +34,14 @@ async function loadPdfjs() {
   return pdfjs;
 }
 
+/** The PDF reader could not be loaded: explain it in Portuguese, with what to do. */
+function unreachable(error: unknown): never {
+  throw new Error(
+    'O leitor de PDF não pôde ser carregado. Recarregue a página; se continuar, confira se o aplicativo está aberto no computador (npm start ou npm run dev) ou a conexão.',
+    { cause: error },
+  );
+}
+
 export interface PdfHandle {
   readonly promise: Promise<PDFDocumentProxy>;
   close(): void;
@@ -44,11 +52,17 @@ export function openPdf(blob: Blob): PdfHandle {
   let task: PDFDocumentLoadingTask | undefined;
   let closed = false;
   const promise = (async () => {
-    const pdfjs = await loadPdfjs();
+    const pdfjs = await loadPdfjs().catch(unreachable);
     const data = await blob.arrayBuffer();
     if (closed) throw new DOMException('O documento foi fechado.', 'AbortError');
     task = pdfjs.getDocument({ data, ...pdfResources(pdfjs.version, location.href) });
-    return task.promise;
+    return task.promise.catch(error => {
+      // The PDF reader's worker is fetched on first use: a closed server (npm run dev stopped) or a lost
+      // connection before the offline copy was ready shows up here, in English and technical.
+      if (/fake worker|dynamically imported module|Failed to fetch/i.test(String(error?.message)))
+        unreachable(error);
+      throw error;
+    });
   })();
   // Callers that stop waiting (page changes, unmount) must not produce unhandled rejections.
   promise.catch(() => {});
