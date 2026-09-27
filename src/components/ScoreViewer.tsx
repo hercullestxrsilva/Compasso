@@ -140,7 +140,8 @@ function inertOutside(element: HTMLElement) {
 
 export interface ScoreViewerProps {
   score: Score;
-  onRegion: (region: Region) => void;
+  /** A rectangle drawn with the Trecho tool. Without it the tool is not offered. */
+  onRegion?: (region: Region) => void;
   targetRegion?: Region;
   notify: Notify;
   /** Extra controls kept visible while the score is in full screen (e.g. the practice transport). */
@@ -159,7 +160,14 @@ export interface ScoreViewerProps {
    * to go to the target and focus on it again (e.g. "Ver" pressed twice).
    */
   focusRequest?: number;
+  /** Opens in full screen (a routine's next step, after a step without a score closed the viewer). */
+  defaultFullscreen?: boolean;
+  /** Called when the viewer enters or leaves full screen. */
+  onFullscreenChange?: (fullscreen: boolean) => void;
 }
+/** Notices (toasts) rise above the bar under the score when that bar is this close to the window's bottom. */
+const TOAST_ZONE = 240;
+
 export default function ScoreViewer({
   score,
   onRegion,
@@ -172,6 +180,8 @@ export default function ScoreViewer({
   regionPrompt,
   onRegionCancel,
   focusRequest,
+  defaultFullscreen = false,
+  onFullscreenChange,
 }: ScoreViewerProps) {
   const asset = useLiveQuery(() => db.assets.get(score.assetId), [score.assetId]);
   const isPdf = !!asset && (asset.mime === 'application/pdf' || asset.name.toLowerCase().endsWith('.pdf'));
@@ -202,7 +212,7 @@ export default function ScoreViewer({
     [focusContext, setFocusContext] = useState<FocusContext>('lead-in'),
     [targetHidden, setTargetHidden] = useState(false);
   const [exporting, setExporting] = useState(false),
-    [fullscreen, setFullscreen] = useState(false),
+    [fullscreen, setFullscreen] = useState(defaultFullscreen),
     [menuOpen, setMenuOpen] = useState(false),
     [limit, setLimit] = useState<number>();
   const [pencilOnly, setPencilOnly] = useState(() => readFlag(PENCIL_ONLY_KEY) ?? false),
@@ -225,7 +235,9 @@ export default function ScoreViewer({
     anchor = useRef<Anchor | null>(null),
     renderer = useRef<{ key: string; renderer: PdfRenderer } | null>(null),
     appliedTarget = useRef<{ region?: Region; request?: number }>({}),
-    penOfferQueued = useRef(false);
+    penOfferQueued = useRef(false),
+    // Where the Texto tool was pressed; the dialog opens on the click that ends that press.
+    textPress = useRef<{ point: Point; page: number } | null>(null);
   const history = historyFor(score.id);
   useSyncExternalStore(history.subscribe, () => history.version);
   const annotations =
@@ -444,11 +456,20 @@ export default function ScoreViewer({
     live.current = { effectiveZoom, tool, pencilOnly, applyZoom };
   });
 
-  // Pinch (two fingers) and ctrl+wheel / trackpad pinch zoom the score itself, not the whole page.
+  // Pinch (two fingers) and ctrl+wheel / trackpad pinch zoom the score itself, not the whole page. Two fingers
+  // also pan it, with any tool: one finger draws with the pen and the highlighter.
   useEffect(() => {
     const element = container.current;
     if (!element) return;
-    let pinch: { distance: number; base: number; pin: Anchor; scale: number } | null = null;
+    let pinch: {
+      distance: number;
+      base: number;
+      pin: Anchor;
+      scale: number;
+      /** Midpoint of the fingers at the last move. */
+      x: number;
+      y: number;
+    } | null = null;
     let wheel: { base: number; pin: Anchor; scale: number; timer: number } | null = null;
     const pinFor = (clientX: number, clientY: number) => {
       const rect = sheet.current?.getBoundingClientRect();
@@ -466,13 +487,15 @@ export default function ScoreViewer({
       Array.from(touches).filter(t => (t as Touch & { touchType?: string }).touchType !== 'stylus');
     const spread = (touches: Touch[]) =>
       Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+    const middle = (touches: Touch[]) => ({
+      x: (touches[0].clientX + touches[1].clientX) / 2,
+      y: (touches[0].clientY + touches[1].clientY) / 2,
+    });
     const onTouchStart = (event: TouchEvent) => {
       const touches = fingers(event.touches);
       if (touches.length !== 2 || penDown.current) return;
-      const pin = pinFor(
-        (touches[0].clientX + touches[1].clientX) / 2,
-        (touches[0].clientY + touches[1].clientY) / 2,
-      );
+      const { x, y } = middle(touches);
+      const pin = pinFor(x, y);
       if (!pin) return;
       // A second finger turns a finger stroke that just started into a pinch.
       pinching.current = true;
@@ -488,12 +511,20 @@ export default function ScoreViewer({
         base: live.current.effectiveZoom,
         pin,
         scale: 1,
+        x,
+        y,
       };
     };
     const onTouchMove = (event: TouchEvent) => {
       const touches = fingers(event.touches);
       if (!pinch || touches.length !== 2) return;
       if (event.cancelable) event.preventDefault();
+      // The page follows the midpoint of the fingers; the point pinned under them stays under them.
+      const { x, y } = middle(touches);
+      element.scrollLeft -= x - pinch.x;
+      element.scrollTop -= y - pinch.y;
+      pinch.x = x;
+      pinch.y = y;
       pinch.scale = limit(pinch.base, spread(touches) / pinch.distance);
       setGesture({ scale: pinch.scale, x: pinch.pin.fx, y: pinch.pin.fy });
     };
@@ -504,7 +535,8 @@ export default function ScoreViewer({
       const done = pinch;
       pinch = null;
       setGesture(null);
-      if (Math.abs(done.scale - 1) > 0.02) live.current.applyZoom(done.base * done.scale, done.pin);
+      if (Math.abs(done.scale - 1) > 0.02)
+        live.current.applyZoom(done.base * done.scale, { ...done.pin, clientX: done.x, clientY: done.y });
     };
     const onWheel = (event: WheelEvent) => {
       if (!event.ctrlKey) return;
@@ -590,6 +622,48 @@ export default function ScoreViewer({
       document.body.style.overflow = previousOverflow;
       restoreInert();
       document.removeEventListener('fullscreenchange', onFullscreenChange);
+      // Closed while in full screen (Back, a routine step without a score): the browser leaves it too.
+      if (document.fullscreenElement === document.documentElement)
+        void document.exitFullscreen().catch(() => {});
+    };
+  }, [fullscreen]);
+  const fullscreenChanged = useRef(onFullscreenChange);
+  useEffect(() => {
+    fullscreenChanged.current = onFullscreenChange;
+  });
+  useEffect(() => {
+    fullscreenChanged.current?.(fullscreen);
+  }, [fullscreen]);
+
+  // Notices (toasts) appear at the bottom of the window, where the bar under the score sits (with the practice
+  // transport in full screen). While that bar is near the bottom they rise above it, so it stays in reach.
+  useEffect(() => {
+    const bar = bottomBar.current;
+    if (!bar) return;
+    const root = document.documentElement;
+    let frame = 0;
+    const place = () => {
+      frame = 0;
+      const rect = bar.getBoundingClientRect(),
+        height = window.innerHeight;
+      const near = rect.height > 0 && rect.top < height && rect.bottom > height - TOAST_ZONE;
+      root.style.setProperty('--toast-lift', `${near ? Math.ceil(height - rect.top) : 0}px`);
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(place);
+    };
+    place();
+    const observer = new ResizeObserver(schedule);
+    observer.observe(bar);
+    if (viewer.current) observer.observe(viewer.current);
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+      root.style.removeProperty('--toast-lift');
     };
   }, [fullscreen]);
   useEffect(() => {
@@ -892,7 +966,8 @@ export default function ScoreViewer({
   const interactive = tool === 'select' || tool === 'erase';
   // Marking a trecho leaves no ink, so a finger may draw the rectangle even in "Só Apple Pencil" mode.
   const fingerDraws = !pencilOnly || tool === 'region';
-  const touchAction = tool === 'navigate' || !fingerDraws ? 'pan-x pan-y' : 'none';
+  // Borracha only needs a tap on a mark, so a finger dragged over the page scrolls it.
+  const touchAction = tool === 'navigate' || tool === 'erase' || !fingerDraws ? 'pan-x pan-y' : 'none';
   const visibleAnnotations = annotations.filter(a => !hiddenLayers.includes(a.layer));
   const segmentsHere = segments
     ? segments.flatMap(s =>
@@ -914,7 +989,7 @@ export default function ScoreViewer({
     >
       <div className="score-toolbar">
         <div className="score-toolset" role="group" aria-label="Ferramentas da partitura">
-          {tools.map(([key, Icon, short, label]) => (
+          {(onRegion ? tools : tools.filter(([key]) => key !== 'region')).map(([key, Icon, short, label]) => (
             <button
               key={key}
               type="button"
@@ -1244,10 +1319,7 @@ export default function ScoreViewer({
                 }
                 const p = point(e);
                 if (tool === 'text') {
-                  ensureLayerVisible();
-                  setTextPoint({ point: p, page });
-                  setText('');
-                  setFontSize(20);
+                  textPress.current = { point: p, page };
                   return;
                 }
                 if (tool !== 'region') ensureLayerVisible();
@@ -1275,7 +1347,20 @@ export default function ScoreViewer({
                 drawing.current = tool === 'region' ? [drawing.current[0], p] : [...drawing.current, p];
                 setDraft(drawing.current);
               }}
+              onClick={() => {
+                // The text dialog opens once the tap or click is over. Opened on pointerdown, the mouse events
+                // that follow (and a finger's compatibility click) land on its fields and buttons under the
+                // pointer: the focus leaves the text field, or Cancelar closes the dialog at once.
+                const press = textPress.current;
+                textPress.current = null;
+                if (!press || tool !== 'text') return;
+                ensureLayerVisible();
+                setTextPoint(press);
+                setText('');
+                setFontSize(20);
+              }}
               onPointerCancel={e => {
+                textPress.current = null;
                 if (e.pointerType === 'pen') penDown.current = false;
                 if (moving.current?.pointerId === e.pointerId) void finishMove(e.pointerId, e, true);
                 if (pointer.current !== e.pointerId) return;
@@ -1298,7 +1383,7 @@ export default function ScoreViewer({
                   const a = points[0],
                     b = points.at(-1)!;
                   if (Math.abs(a.x - b.x) > 0.015 && Math.abs(a.y - b.y) > 0.008) {
-                    onRegion({
+                    onRegion?.({
                       page,
                       x: Math.min(a.x, b.x),
                       y: Math.min(a.y, b.y),

@@ -235,11 +235,13 @@ html:has(.topbar .activity-bar) {
   }
 }
 
-/* Fixed to the viewport, also when rendered inside an open dialog (above its content and backdrop). */
+/* Fixed to the viewport, also when rendered inside an open dialog (above its content and backdrop). A score
+   viewer whose bottom bar (pages, fit, zoom, the practice transport) is near the window's bottom sets
+   --toast-lift to that bar's height from the bottom, so notices sit above it instead of over its controls. */
 .toast-stack {
   position: fixed;
   left: 50%;
-  bottom: calc(24px + env(safe-area-inset-bottom));
+  bottom: max(calc(24px + env(safe-area-inset-bottom)), calc(var(--toast-lift, 0px) + 12px));
   transform: translateX(-50%);
   z-index: 100;
   display: flex;
@@ -372,7 +374,7 @@ html:has(.topbar .activity-bar) {
     font-size: 0.83rem;
   }
   .toast-stack {
-    bottom: calc(14px + env(safe-area-inset-bottom));
+    bottom: max(calc(14px + env(safe-area-inset-bottom)), calc(var(--toast-lift, 0px) + 8px));
   }
   /* Below the sticky 64px header (and the activity bar under it). */
   html {
