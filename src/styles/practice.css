@@ -507,6 +507,28 @@
 .practice-hud .phase-pill {
   font-size: var(--fs-stage-label);
 }
+/* Between routine steps: the rating of the step just played, on its own row. */
+.practice-hud .quick-rating {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  padding: 0 0 var(--space-2);
+  border: 0;
+  font-size: var(--fs-md);
+}
+.practice-hud .quick-rating .rating-buttons {
+  flex: 1 1 360px;
+  margin: 0;
+}
+.practice-hud .quick-rating .rating-buttons > button {
+  min-height: 56px;
+}
+.practice-hud .quick-review {
+  margin: 0;
+}
 .practice-hud[data-phase='idle'] .phase-pill,
 .practice-hud[data-phase='paused'] .phase-pill,
 .practice-hud[data-phase='complete'] .phase-pill {
@@ -541,6 +563,26 @@
   min-height: 56px;
   min-width: 56px;
   padding: var(--space-3) var(--space-4);
+}
+/* A narrower full screen (iPad Air or mini in portrait) keeps the transport on one row under the context. */
+@container score (max-width: 960px) {
+  .practice-hud {
+    column-gap: var(--space-3);
+    padding-left: max(var(--space-3), env(safe-area-inset-left));
+    padding-right: max(var(--space-3), env(safe-area-inset-right));
+  }
+  .practice-hud .phase-pill {
+    padding-inline: 0.7em;
+  }
+  .hud-stat {
+    font-size: var(--fs-xl);
+  }
+  .practice-hud .beat-dots {
+    gap: var(--space-2);
+  }
+  .practice-hud .btn.hud-play {
+    padding-inline: var(--space-4);
+  }
 }
 /* Quick repeated taps (tap tempo, ±) must not be taken as a double-tap zoom on the iPad. */
 .metronome-tools .btn,
@@ -605,8 +647,12 @@
   color: var(--ink-muted);
 }
 .modal-actions.cycle-footer {
+  /* The dialog's padding: the footer reaches its bottom edge, so no field scrolls (or is tapped) under it. */
+  --modal-pad: var(--space-6);
   position: sticky;
-  bottom: 0;
+  bottom: calc(-1 * var(--modal-pad));
+  margin-bottom: calc(-1 * var(--modal-pad));
+  padding-bottom: var(--modal-pad);
   background: var(--surface);
   flex-wrap: wrap;
   align-items: center;
@@ -668,6 +714,8 @@
 }
 .routine-add {
   display: grid;
+  /* The select is as wide as its longest trecho name; the column must not follow it past the dialog. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
   margin-bottom: var(--space-3);
 }
@@ -802,6 +850,9 @@
   }
 }
 @media (max-width: 700px) {
+  .modal-actions.cycle-footer {
+    --modal-pad: var(--space-5);
+  }
   .practice-hud {
     gap: var(--space-1-5) var(--space-3);
     padding: var(--space-1-5) var(--space-3);

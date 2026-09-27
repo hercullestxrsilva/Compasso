@@ -108,6 +108,22 @@ npm run build
 
 Os testes cobrem contagem de prática, agendamento de áudio com relógio simulado, recuperação de capturas, formato e análise de gravações, integridade de backup, movimentação de anotações, preservação de registros vinculados, renderização/cancelamento de PDF e fronteiras da API. Os testes de IA usam respostas simuladas do provedor.
 
+### Testes de ponta a ponta
+
+```powershell
+npm run test:e2e
+```
+
+Abre o aplicativo de verdade (servidor Vite na porta 5240) e percorre os caminhos principais em duas telas, computador e iPad de 12,9" em pé com toque: adicionar uma peça com PDF e ver a página desenhada, anotar com caneta, marca-texto e texto (desfazer, refazer, recarregar, apagar), marcar um trecho e praticá-lo com o metrônomo até aparecer em Evolução, sair da prática no meio, endereços `#/…` com Voltar e Avançar, exportar o backup .zip e restaurá-lo em outro perfil de navegador, registrar uma aula com áudio, manter o tema escolhido e abrir todas as telas com um acervo completo. Também cobre defeitos já corrigidos: avisos que não cobrem a barra da partitura, a ferramenta Texto, Espaço na prática em tela cheia, rotinas em tela cheia, notas não salvas, a virada do dia em Hoje, contraste no tema escuro e o leiaute em celular e no iPad de 11". Cada teste começa com o armazenamento vazio. Um teste marcado com `test.fixme` descreve um defeito conhecido ainda não corrigido: depois da correção, troque por `test` para que ele passe a ser verificado.
+
+Os testes usam o navegador já instalado no computador; nada é baixado. É preciso ter o **Google Chrome** instalado. Para usar o **Microsoft Edge**, defina `E2E_BROWSER=msedge`:
+
+```powershell
+$env:E2E_BROWSER = 'msedge'; npm run test:e2e
+```
+
+O `npm run dev` pode continuar aberto: os testes usam a porta 5240, separada da 5188. Se algum teste falhar, `npx playwright show-report` abre o relatório com captura de tela e rastro do passo que falhou. Os arquivos ficam em `e2e/`; `playwright-report/` e `test-results/` não vão para o controle de versão.
+
 Os comandos `npm run dev` e `npm run build` preparam automaticamente os recursos auxiliares do PDF.js em `public/pdfjs/<versão>`. Eles incluem decodificadores de imagens digitalizadas (JPEG2000/JBIG2), fontes e perfis de cor. Preserve essa pasta no pacote publicado: sem esses recursos, certos PDFs podem ficar em branco. O build de produção inclui esses arquivos no cache offline.
 
 | Pasta/arquivo                          | Responsabilidade                                    |
@@ -120,5 +136,6 @@ Os comandos `npm run dev` e `npm run build` preparam automaticamente os recursos
 | `supabase/migrations`                  | Estrutura opcional de backups privados              |
 | `scripts/service-worker.mjs`           | Cache offline gerado a partir do build              |
 | `tests`                                | Testes automatizados e arquivos sintéticos de teste |
+| `e2e`, `playwright.config.ts`          | Testes de ponta a ponta no navegador                |
 
 Veja [IMPLEMENTACAO.md](./IMPLEMENTACAO.md) para resultados e limitações, [ARQUITETURA.md](./ARQUITETURA.md) para a visão de longo prazo, [PESQUISA_APPS.md](./PESQUISA_APPS.md) para referências e [HANDOFF_CLAUDE.md](./HANDOFF_CLAUDE.md) para continuidade por outro assistente.

@@ -4,7 +4,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist', 'node_modules', 'public', '.runtime', '.claude'] },
+  { ignores: ['dist', 'node_modules', 'public', '.runtime', '.claude', 'playwright-report', 'test-results'] },
   {
     files: ['src/**/*.{ts,tsx}'],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
@@ -17,7 +17,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['server/**/*.mjs', 'scripts/**/*.mjs', 'tests/**/*.{ts,mjs}', '*.config.{js,ts}'],
+    files: ['server/**/*.mjs', 'scripts/**/*.mjs', 'tests/**/*.{ts,mjs}', 'e2e/**/*.ts', '*.config.{js,ts}'],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     languageOptions: { ecmaVersion: 2022, globals: { ...globals.node } },
   },

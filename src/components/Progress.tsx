@@ -720,7 +720,7 @@ function ReviewBoard({
               <h2 className="review-group-title">
                 {group.title} <span>{items.length}</span>
               </h2>
-              <div className="piece-grid">
+              <div className="piece-grid review-grid">
                 {items.map(s => {
                   const session = lastSession(s.id);
                   const late = group.status === 'overdue' ? daysBetween(s.reviewDate, today) : 0;

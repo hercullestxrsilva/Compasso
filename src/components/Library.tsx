@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Plus, Search, ArrowUpRight, MoreHorizontal, BookOpen, FileMusic, Trash2 } from 'lucide-react';
 import { db, removePiece, storeAsset } from '../db';
-import { statuses, uid, now, type Piece, type PieceStatus } from '../domain';
+import { matchesSearch, statuses, uid, now, type Piece, type PieceStatus } from '../domain';
 import { Modal, Field, Empty, ErrorBox, Badge, errorText, useConfirm, type Notify } from './common';
 import { forgetHistory } from '../annotation-history';
 import { forgetPieceView, titleFromFileName } from '../score-view';
@@ -169,9 +169,7 @@ export function Library({ onOpen, notify }: { onOpen: (id: string) => void; noti
   const filtered = pieces.filter(
     p =>
       (filter === 'all' || p.status === filter) &&
-      `${p.title} ${p.composer} ${p.tags}`
-        .toLocaleLowerCase('pt-BR')
-        .includes(search.toLocaleLowerCase('pt-BR')),
+      matchesSearch(`${p.title} ${p.composer} ${p.tags}`, search),
   );
   return (
     <>

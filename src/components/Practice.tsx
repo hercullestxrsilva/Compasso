@@ -74,6 +74,7 @@ import {
   CycleSummary,
   PracticeTips,
   PresetOptions,
+  QuickRating,
   RoutineStrip,
   RoutineTransition,
   TargetOptions,
@@ -182,7 +183,9 @@ export default function Practice({
   const [volume, setVolume] = useState(deviceVolume),
     [resumeWithCountIn, setResumeWithCountIn] = useState(() => readDevice().resumeWithCountIn !== false),
     [taps, setTaps] = useState<number[]>([]),
-    [run, setRunState] = useState<RoutineRun | null>(null);
+    [run, setRunState] = useState<RoutineRun | null>(null),
+    // The score was in full screen: a routine step after one without a score opens it in full screen again.
+    [scoreFullscreen, setScoreFullscreen] = useState(false);
   const engine = useRef<PracticeEngine | null>(null),
     audio = useRef<AudioContext | null>(null),
     sessionId = useRef<string | null>(null),
@@ -209,6 +212,7 @@ export default function Practice({
   const setRun = (next: RoutineRun | null) => {
     // Once the routine is over, the console goes back to the selection's own cycle (not the step's).
     if (!next && runRef.current) appliedFor.current = null;
+    if (!next) setScoreFullscreen(false);
     runRef.current = next;
     setRunState(next);
   };
@@ -717,17 +721,34 @@ export default function Practice({
     };
   }, []);
 
-  // Space pauses and continues while a session is open (not while typing or on a focused control).
+  // The button or link last pressed with the mouse, a finger or the pencil, until Tab moves on. It may keep the
+  // focus (the score's Tela cheia, Focar no trecho, the zoom), but Space is not meant for it.
+  const pressedControl = useRef<Element | null>(null);
+  useEffect(() => {
+    const onPointerDown = (e: PointerEvent) => {
+      pressedControl.current = (e.target as Element | null)?.closest?.('button, a') ?? null;
+    };
+    const onTab = (e: KeyboardEvent) => {
+      if (e.key === 'Tab') pressedControl.current = null;
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('keydown', onTab, true);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('keydown', onTab, true);
+    };
+  }, []);
+  // Space pauses and continues while a session is open: not while typing, nor on a control reached with the
+  // keyboard, which Space presses as usual.
   useEffect(() => {
     if (!started) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== ' ' || e.repeat || e.altKey || e.ctrlKey || e.metaKey) return;
-      if (
-        (e.target as Element | null)?.closest?.(
-          'input, textarea, select, button, a, [contenteditable], dialog',
-        )
-      )
-        return;
+      const target = e.target as Element | null;
+      if (target?.closest?.('input, textarea, select, [contenteditable], dialog')) return;
+      const control = target?.closest?.('button, a');
+      if (control && control !== pressedControl.current) return;
+      // Also keeps Space from pressing the clicked button again.
       e.preventDefault();
       latest.current?.toggle();
     };
@@ -900,6 +921,10 @@ export default function Practice({
           </>
         )}
       </p>
+      {/* The console with the same rating is hidden behind the full-screen score. */}
+      {run && !started && run.last && (
+        <QuickRating last={run.last} onRate={rating => void rateLast(rating)} />
+      )}
       <span className="phase-pill">
         {phaseText}
         {countIn !== null && <b>{countIn}</b>}
@@ -1279,12 +1304,14 @@ export default function Practice({
                 {segment?.measures ? `c. ${segment.measures}` : wholePiece ? 'Peça inteira' : 'Partitura'}
               </Badge>
             </div>
+            {/* No Trecho tool here: trechos are marked on the piece's page. */}
             <ScoreViewer
               score={score}
               targetRegion={targetRegion}
               notify={notify}
-              onRegion={() => notify('Para criar outro trecho, abra a peça no repertório.', 'info')}
               fullscreenOverlay={hud}
+              defaultFullscreen={routineActive && scoreFullscreen}
+              onFullscreenChange={setScoreFullscreen}
             />
           </section>
         ) : (

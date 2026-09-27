@@ -9,6 +9,7 @@ import {
   captureConstraints,
   captureTitle,
   meterLevel,
+  microphoneError,
   recorderOptions,
   recordingExtension,
   type CaptureProfile,
@@ -259,7 +260,9 @@ export default function Recorder({
         throw new Error(
           'A gravação requer HTTPS ou localhost e permissão de microfone. Você também pode importar um áudio.',
         );
-      stream = await openMicrophone();
+      stream = await openMicrophone().catch((err: unknown) => {
+        throw new Error(microphoneError(err) ?? errorText(err));
+      });
       if (!alive.current) {
         stream.getTracks().forEach(t => t.stop());
         return;

@@ -338,6 +338,8 @@
   position: relative;
   touch-action: pan-x pan-y;
   scrollbar-gutter: stable;
+  /* A sideways swipe or stroke stays on the score: Chrome and Edge would otherwise take it as Back. */
+  overscroll-behavior-x: contain;
 }
 /* Outside full screen a swipe that reaches the end of the page keeps scrolling to the trechos below. */
 .score-viewer.is-fullscreen .score-scroll {
@@ -516,9 +518,13 @@
     min-width: var(--tap);
     height: var(--tap);
   }
+  /* A full 44px target per colour, so a finger does not pick the neighbouring one. */
   .score-swatch {
-    width: 32px;
-    height: 32px;
+    width: var(--tap);
+    height: var(--tap);
+  }
+  .score-swatch::before {
+    inset: -3px;
   }
 }
 @container score (min-width: 620px) {
