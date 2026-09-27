@@ -10,6 +10,7 @@
     "build": "tsc -b && vite build && node scripts/service-worker.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "server": "node --env-file-if-exists=.env server/index.mjs",
     "check": "tsc -b",
     "start": "node --env-file-if-exists=.env server/production.mjs",
