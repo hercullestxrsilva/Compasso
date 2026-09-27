@@ -1,6 +1,7 @@
 import { RotateCcw, SkipForward } from 'lucide-react';
 import {
   clock,
+  formatDate,
   type Piece,
   type PracticeConfig,
   type Preset,
@@ -9,6 +10,7 @@ import {
   type Segment,
 } from '../../domain';
 import { pieceTarget, plural } from '../../practice/setup';
+import type { ReviewSchedule } from '../../practice/review';
 import { ratings } from './SessionReview';
 
 /** Presentational pieces of the practice screen. */
@@ -20,22 +22,21 @@ export interface RoutineRun {
   /** Seconds before the next step starts by itself; null while a step plays or while waiting for a tap. */
   countdown: number | null;
   /** The step just finished, for a one-tap rating. */
-  last?: { sessionId: string; segmentId?: string; title: string; rating?: Rating };
+  last?: {
+    sessionId: string;
+    segmentId?: string;
+    title: string;
+    rating?: Rating;
+    /** The trecho's review schedule before the rating (every tap starts from it). */
+    schedule?: ReviewSchedule;
+    /** Review date set by the rating. */
+    reviewDate?: string;
+  };
 }
 
-export function BeatDots({
-  count,
-  lit,
-  flashKey,
-  compact = false,
-}: {
-  count: number;
-  lit: number;
-  flashKey: string;
-  compact?: boolean;
-}) {
+export function BeatDots({ count, lit, flashKey }: { count: number; lit: number; flashKey: string }) {
   return (
-    <div className={`beat-dots ${compact ? 'compact' : ''}`} aria-hidden="true">
+    <div className="beat-dots" aria-hidden="true">
       {Array.from({ length: count }, (_, i) => (
         // A new key on each beat remounts the lit dot, so its flash animation plays again.
         <span
@@ -66,7 +67,10 @@ export function RoutineStrip({ run }: { run: RoutineRun }) {
   );
 }
 
-/** Between two routine steps: rate the one just played, see what comes next, and a short countdown. */
+/**
+ * Between two routine steps: rate the one just played, see what comes next, and a short countdown. Not a live
+ * region (the countdown would be read every second); the practice screen announces the next step once.
+ */
 export function RoutineTransition({
   run,
   nextTitle,
@@ -85,7 +89,7 @@ export function RoutineTransition({
   onEnd: () => void;
 }) {
   return (
-    <section className="routine-transition" aria-live="polite">
+    <section className="routine-transition" aria-label="A seguir na rotina">
       {run.last && (
         <div className="quick-rating">
           <span>Como foi “{run.last.title}”?</span>
@@ -102,6 +106,9 @@ export function RoutineTransition({
               </button>
             ))}
           </div>
+          {run.last.reviewDate && (
+            <p className="quick-review">Próxima revisão deste trecho: {formatDate(run.last.reviewDate)}</p>
+          )}
         </div>
       )}
       <p className="transition-next">

@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   Play,
@@ -27,6 +35,7 @@ import {
   type Hand,
   type PracticeConfig,
   type Rating,
+  type Region,
   type Routine,
 } from '../domain';
 import { PracticeEngine, type Preroll } from '../practice/engine';
@@ -46,8 +55,10 @@ import {
   pieceDefaultConfig,
   readDevice,
   rememberedConfig,
+  sameConfig,
   segmentConfig,
   tapTempo,
+  withMetronome,
   writeDevice,
 } from '../practice/setup';
 import { nextStepIndex, resolveStep, stepDetail, TRANSITION_SECONDS } from '../practice/routine';
@@ -56,7 +67,7 @@ import ScoreViewer from './ScoreViewer';
 import Recorder from './Recorder';
 import Routines from './Routines';
 import CycleSettings from './practice/CycleSettings';
-import SessionReview, { quickRate, type ReviewInfo } from './practice/SessionReview';
+import SessionReview, { quickRate, reviewContext, type ReviewInfo } from './practice/SessionReview';
 import PresetManager from './practice/PresetManager';
 import {
   BeatDots,
@@ -100,6 +111,14 @@ interface Handlers {
   attemptContext: () => AttemptContext;
 }
 type PhaseKey = 'idle' | 'paused' | 'preparation' | 'practice' | 'rest' | 'complete';
+
+/**
+ * A transport button clicked with the mouse gives its focus back, so Space keeps pausing and continuing
+ * instead of pressing that button again. Keyboard activation (detail 0) keeps the focus where it is.
+ */
+const releaseFocus = (e: ReactMouseEvent<HTMLElement>) => {
+  if (e.detail > 0) e.currentTarget.blur();
+};
 
 const beatUnitNames = {
   quarter: 'semínima',
@@ -322,17 +341,29 @@ export default function Practice({
     release();
     const info = sessionInfo.current;
     const maxBpm = e.silent ? undefined : maxBpmReached(e.rounds, e.elapsed);
+    // In a routine, the trecho's review schedule before any quick rating (read alongside the save), so
+    // tapping a rating again gives the same date.
+    const scheduling =
+      runRef.current && info.segmentId
+        ? reviewContext(info.segmentId, id).then(
+            c => c?.schedule,
+            () => undefined,
+          )
+        : undefined;
     const result = await persist(complete);
     const r = runRef.current;
     if (r && (complete || advance)) {
       const next = nextStepIndex(r.routine.items, r.index + 1, segments);
       if (next >= 0) {
+        const schedule = result === 'saved' ? await scheduling : undefined;
         setRun({
           routine: r.routine,
           index: next,
           countdown: TRANSITION_SECONDS,
           last:
-            result === 'saved' ? { sessionId: id, segmentId: info.segmentId, title: info.title } : undefined,
+            result === 'saved'
+              ? { sessionId: id, segmentId: info.segmentId, title: info.title, schedule }
+              : undefined,
         });
         showStep(r.routine, next);
         return;
@@ -355,11 +386,14 @@ export default function Practice({
   /** Remembers the cycle used, so the next visit starts from it. Routine steps are derived, not remembered. */
   const remember = (cfg: PracticeConfig, info: SessionInfo) => {
     if (info.routineId) return;
-    if (info.kind === 'segment' && info.segmentId)
+    if (info.kind === 'segment' && info.segmentId) {
+      // An unchanged cycle is not written again: every segment write refreshes the screen's data.
+      const known = segments.find(s => s.id === info.segmentId)?.practiceConfig;
+      if (sameConfig(known, rememberedConfig(cfg))) return;
       db.segments
         .update(info.segmentId, { practiceConfig: rememberedConfig(cfg) })
         .catch(err => notify(`Não foi possível lembrar o ciclo deste trecho: ${errorText(err)}`, 'error'));
-    else if (info.kind === 'piece' && info.pieceId) {
+    } else if (info.kind === 'piece' && info.pieceId) {
       const { [info.pieceId]: _previous, ...others } = readDevice().pieces ?? {};
       writeDevice({ pieces: { ...others, [info.pieceId]: cfg } });
     } else writeDevice({ free: cfg });
@@ -400,10 +434,12 @@ export default function Practice({
       engine.current = e;
       setLiveRounds(e.rounds);
       await e.start();
+      // Ended (Encerrar in the mini-bar, leaving the screen) while the audio was waking up.
+      if (sessionId.current !== id) return;
       setStarted(true);
-      setRunning(true);
+      setRunning(e.running);
       remember(cfg, sessionInfo.current);
-      void keepAwake();
+      if (e.running) void keepAwake();
     } catch (err) {
       setError(errorText(err));
       sessionId.current = null;
@@ -423,6 +459,8 @@ export default function Practice({
     setError('');
     try {
       await e.resume(resumeWithCountIn);
+      // Paused or ended while the audio was waking up: the engine stayed stopped.
+      if (engine.current !== e || !e.running) return;
       setRunning(true);
       void keepAwake();
     } catch (err) {
@@ -513,21 +551,20 @@ export default function Practice({
     showStep(r.routine, next);
   };
   const rateLast = async (rating: Rating) => {
-    const r = runRef.current,
-      last = r?.last;
-    if (!r || !last) return;
+    const last = runRef.current?.last;
+    if (!last) return;
     try {
-      await quickRate(last.sessionId, last.segmentId, rating);
-      if (runRef.current === r) setRun({ ...r, last: { ...last, rating } });
+      const { reviewDate, schedule } = await quickRate(last.sessionId, last.segmentId, rating, last.schedule);
+      // The countdown may have replaced the run meanwhile; keep the rating on whichever step is shown.
+      const now = runRef.current;
+      if (now?.last?.sessionId === last.sessionId)
+        setRun({ ...now, last: { ...now.last, rating, reviewDate, schedule } });
     } catch (err) {
       notify(`Não foi possível salvar a avaliação: ${errorText(err)}`, 'error');
     }
   };
   const setMetronome = (on: boolean) => {
-    setConfig(c => {
-      const { metronome: _metronome, ...rest } = c;
-      return on ? rest : { ...rest, metronome: false, mode: 'seconds' };
-    });
+    setConfig(c => withMetronome(c, on));
     resetTimeline();
   };
   const tap = () => {
@@ -595,9 +632,17 @@ export default function Practice({
     if (!recording) attempt.current = null;
     else attempt.current ??= latest.current?.attemptContext() ?? null;
   }, []);
+  // Same rule as attemptContext: the session's trecho while practising, otherwise the selected one.
+  const attemptSegment = started ? current?.segmentId : segment?.id;
   const attemptOrigin = useMemo(
-    () => ({ kind: 'attempt' as const, segmentId: current?.segmentId ?? segment?.id }),
-    [current?.segmentId, segment?.id],
+    () => ({ kind: 'attempt' as const, segmentId: attemptSegment }),
+    [attemptSegment],
+  );
+  // A value-stable region: other segment writes (review, remembered cycle) must not re-zoom the score.
+  const regionKey = segment?.regions[0] ? JSON.stringify([segment.id, segment.regions[0]]) : '';
+  const targetRegion = useMemo(
+    () => (regionKey ? (JSON.parse(regionKey) as [string, Region])[1] : undefined),
+    [regionKey],
   );
 
   useLayoutEffect(() => {
@@ -620,9 +665,13 @@ export default function Practice({
       },
       persist,
       hidden: () => {
-        if (!engine.current?.running) return;
-        pause();
-        notify('Prática pausada porque a tela ficou inativa.', 'info');
+        const e = engine.current;
+        if (e?.running) {
+          pause();
+          notify('Prática pausada porque a tela ficou inativa.', 'info');
+        }
+        // A start still waiting for the audio must not begin playing in the background.
+        else if (e && startPending.current) e.pause();
       },
       toggle: () => {
         if (!engine.current || !sessionId.current) return;
@@ -716,8 +765,8 @@ export default function Practice({
     ? `${running ? '' : 'Pausada · '}Rep ${position.round.index + 1}/${rounds.length} · ${clock(total - elapsed)}`
     : run
       ? run.countdown !== null
-        ? `Próximo passo em ${run.countdown} s`
-        : 'Aguardando o próximo passo'
+        ? `Passo ${run.index + 1} começa em ${run.countdown} s`
+        : `Aguardando o passo ${run.index + 1}`
       : '';
   useEffect(() => {
     if (!activityLabel) setActivity('practice', null);
@@ -742,7 +791,7 @@ export default function Practice({
         ? 'preparation'
         : position.phase;
   const phaseText = {
-    idle: run ? 'PRÓXIMO PASSO' : timer ? 'SEU CRONÔMETRO' : 'SEU ANDAMENTO',
+    idle: run ? 'A SEGUIR' : timer ? 'SEU CRONÔMETRO' : 'SEU ANDAMENTO',
     paused: 'PAUSADO',
     preparation: 'PREPARE-SE',
     practice: 'PRATIQUE',
@@ -785,10 +834,32 @@ export default function Practice({
     practice: 'Tempo restante',
     rest: 'Intervalo',
   }[phaseKey];
+  const retimeHint = canRetime
+    ? position.phase === 'rest'
+      ? '− e + ajustam a próxima repetição'
+      : '− e + ajustam esta repetição'
+    : started && running && (position.phase === 'preparation' || position.phase === 'practice')
+      ? position.round.end > position.round.practiceEnd
+        ? 'Para mudar o andamento, pause ou espere o intervalo'
+        : 'Para mudar o andamento, pause'
+      : '';
   const repetitionShown = started || elapsed > 0 ? position.round.index + 1 : '—';
   const progress = Math.min(100, (elapsed / total) * 100);
-  const nextStepExists = run ? nextStepIndex(run.routine.items, run.index + 1, segments) >= 0 : false;
+  const nextStepAt = run ? nextStepIndex(run.routine.items, run.index + 1, segments) : -1;
+  const stepLabel = run ? `Passo ${run.index + 1} de ${run.routine.items.length}` : '';
+  const nextTitle = nextPlan?.title ?? 'Trecho removido';
+  const nextDetail = nextItem ? stepDetail(nextItem, nextPlan) : '';
+  // Read once per step (and again at 3 s), not on every tick of the countdown.
+  const announcement =
+    run && !started
+      ? `${stepLabel}: ${nextTitle}.${
+          run.countdown === null ? '' : ` Começa em ${run.countdown <= 3 ? 3 : TRANSITION_SECONDS} segundos.`
+        }`
+      : phaseText;
   const groups = groupByPiece(pieces, segments);
+  const waitStep = () => {
+    if (runRef.current) setRun({ ...runRef.current, countdown: null });
+  };
 
   const playButton = (className: string) =>
     running ? (
@@ -802,8 +873,33 @@ export default function Practice({
         {started ? 'Continuar' : run ? `Começar passo ${run.index + 1}` : 'Iniciar prática'}
       </button>
     );
+  // Full-screen score on the stand: what is playing (or comes next in the routine) and the transport.
   const hud = (
     <div className="practice-hud" data-phase={phaseKey}>
+      <p className="hud-context">
+        {started && current ? (
+          <>
+            {stepLabel && <span>{stepLabel} · </span>}
+            <strong>{current.title}</strong> · {hands[current.hand]}
+          </>
+        ) : run ? (
+          <>
+            <span>{stepLabel} · </span>
+            <strong>Próximo: {nextTitle}</strong>
+            {nextDetail && ` · ${nextDetail}`}
+            {run.countdown !== null && (
+              <>
+                {' '}
+                · começa em <b>{run.countdown}</b> s
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            <strong>{targetInfo().title}</strong> · {hands[hand]}
+          </>
+        )}
+      </p>
       <span className="phase-pill">
         {phaseText}
         {countIn !== null && <b>{countIn}</b>}
@@ -816,12 +912,39 @@ export default function Practice({
           {shownBpm} <small>BPM</small>
         </span>
       )}
-      {!timer && <BeatDots compact count={beats} lit={litBeat} flashKey={flashKey} />}
+      {!timer &&
+        (silentNow ? (
+          <span className="silent-note">Em silêncio</span>
+        ) : (
+          <BeatDots count={beats} lit={litBeat} flashKey={flashKey} />
+        ))}
       <span className="hud-stat">{clock(started ? remaining : total)}</span>
       {playButton('hud-play')}
       {started && !timer && (
-        <button className="btn secondary hud-btn" aria-label="Recomeçar repetição" onClick={restart}>
+        <button
+          className="btn secondary hud-btn"
+          aria-label="Recomeçar repetição"
+          onClick={e => {
+            releaseFocus(e);
+            restart();
+          }}
+        >
           <RotateCcw size={20} />
+        </button>
+      )}
+      {run && !started && run.countdown !== null && (
+        <button className="btn secondary hud-btn" onClick={waitStep}>
+          Esperar
+        </button>
+      )}
+      {run && !started && (
+        <button
+          className="btn secondary hud-btn"
+          aria-label={`Pular o passo ${run.index + 1}`}
+          onClick={skipStep}
+        >
+          <SkipForward size={20} />
+          Pular
         </button>
       )}
     </div>
@@ -845,10 +968,10 @@ export default function Practice({
           {run && !started && (
             <RoutineTransition
               run={run}
-              nextTitle={nextPlan?.title ?? 'Trecho removido'}
-              nextDetail={nextItem ? stepDetail(nextItem, nextPlan) : ''}
+              nextTitle={nextTitle}
+              nextDetail={nextDetail}
               onRate={rating => void rateLast(rating)}
-              onWait={() => setRun({ ...run, countdown: null })}
+              onWait={waitStep}
               onSkip={skipStep}
               onEnd={() => setRun(null)}
             />
@@ -941,7 +1064,7 @@ export default function Practice({
               {countIn !== null && <b>{countIn}</b>}
             </span>
             <span className="practice-sr" aria-live="polite">
-              {phaseText}
+              {announcement}
             </span>
             {timer ? (
               <div className="timer-readout">
@@ -953,7 +1076,11 @@ export default function Practice({
                 <button
                   aria-label={started ? 'Diminuir o andamento' : 'Diminuir BPM'}
                   disabled={started ? !canRetime || shownBpm <= 20 : busy || config.bpm <= 20}
-                  onClick={() => (started ? retime(-1) : update('bpm', config.bpm - 1))}
+                  onClick={e => {
+                    releaseFocus(e);
+                    if (started) retime(-1);
+                    else update('bpm', config.bpm - 1);
+                  }}
                 >
                   −
                 </button>
@@ -964,7 +1091,11 @@ export default function Practice({
                 <button
                   aria-label={started ? 'Aumentar o andamento' : 'Aumentar BPM'}
                   disabled={started ? !canRetime || shownBpm >= 300 : busy || config.bpm >= 300}
-                  onClick={() => (started ? retime(1) : update('bpm', config.bpm + 1))}
+                  onClick={e => {
+                    releaseFocus(e);
+                    if (started) retime(1);
+                    else update('bpm', config.bpm + 1);
+                  }}
                 >
                   +
                 </button>
@@ -972,13 +1103,7 @@ export default function Practice({
             )}
             {started && !timer && (
               // Always present while practising so the buttons below never move between phases.
-              <p className="retime-hint">
-                {canRetime
-                  ? position.phase === 'rest'
-                    ? '− e + ajustam a próxima repetição'
-                    : '− e + ajustam esta repetição'
-                  : ''}
-              </p>
+              <p className="retime-hint">{retimeHint}</p>
             )}
             {!busy && !timer && (
               <input
@@ -1056,25 +1181,54 @@ export default function Practice({
             <div className="transport">
               {playButton('play-btn')}
               {started && !timer && (
-                <button className="btn secondary" onClick={restart}>
+                <button
+                  className="btn secondary"
+                  onClick={e => {
+                    releaseFocus(e);
+                    restart();
+                  }}
+                >
                   <RotateCcw size={18} />
                   Recomeçar repetição
                 </button>
               )}
-              {started && run && nextStepExists && (
-                <button className="btn secondary" onClick={() => void finish(false, true)}>
+              {started && run && nextStepAt >= 0 && (
+                <button
+                  className="btn secondary"
+                  onClick={e => {
+                    releaseFocus(e);
+                    void finish(false, true);
+                  }}
+                >
                   <SkipForward size={18} />
-                  Próximo passo
+                  Ir para o passo {nextStepAt + 1}
                 </button>
               )}
               {started && (
-                <button className="btn secondary" onClick={() => void finish(false)}>
+                <button
+                  className="btn secondary"
+                  onClick={e => {
+                    releaseFocus(e);
+                    void finish(false);
+                  }}
+                >
                   <Square size={18} />
-                  Encerrar
+                  {run ? 'Encerrar rotina' : 'Encerrar'}
                 </button>
               )}
             </div>
             <ErrorBox message={error} />
+            {/* Right under the transport, so a take can start mid-session without scrolling. Always rendered
+                at this spot: moving it would interrupt a recording when a session starts. */}
+            <div className="attempt-recorder">
+              <Recorder
+                profile="music"
+                origin={attemptOrigin}
+                label="Gravar tentativa"
+                onFile={saveAttempt}
+                onBusyChange={onRecorderBusy}
+              />
+            </div>
             <p className="quiet-hint">
               <Volume2 size={14} />
               {started
@@ -1113,15 +1267,6 @@ export default function Practice({
               )}
             </>
           )}
-          <div className="attempt-recorder">
-            <Recorder
-              profile="music"
-              origin={attemptOrigin}
-              label="Gravar tentativa"
-              onFile={saveAttempt}
-              onBusyChange={onRecorderBusy}
-            />
-          </div>
         </section>
         {score ? (
           <section className="score-card practice-score">
@@ -1136,7 +1281,7 @@ export default function Practice({
             </div>
             <ScoreViewer
               score={score}
-              targetRegion={segment?.regions[0]}
+              targetRegion={targetRegion}
               notify={notify}
               onRegion={() => notify('Para criar outro trecho, abra a peça no repertório.', 'info')}
               fullscreenOverlay={hud}

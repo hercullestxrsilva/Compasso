@@ -285,9 +285,14 @@
   margin-bottom: 0;
 }
 .attempt-recorder {
-  margin-top: 20px;
-  padding-top: 16px;
+  margin-top: 14px;
+  padding-top: 12px;
   border-top: 1px solid var(--line);
+}
+.attempt-recorder .recorder-input,
+.attempt-recorder .recorder-level {
+  margin-inline: auto;
+  text-align: left;
 }
 
 /* While practising, the stage takes the room; the plan tips step aside. */
@@ -375,41 +380,62 @@
 .quick-rating .rating-buttons {
   margin: 8px 0 0;
 }
+.quick-review {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
 
-/* Full-screen score: compact transport */
+/* Full-screen score: the transport on the music stand, as readable as the console. */
 .practice-hud {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px 16px;
+  gap: 8px 18px;
   padding: 8px 14px;
   background: #fff;
   border-bottom: 1px solid var(--line);
   color: var(--ink);
 }
+.hud-context {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 1rem;
+  color: var(--muted);
+}
+.hud-context strong {
+  color: var(--ink);
+}
+.hud-context b {
+  font-size: 1.3em;
+  color: var(--green);
+  font-variant-numeric: tabular-nums;
+}
+.practice-hud .phase-pill {
+  font-size: clamp(1.4rem, 2.2vw, 1.8rem);
+}
+.practice-hud[data-phase='idle'] .phase-pill,
+.practice-hud[data-phase='paused'] .phase-pill,
+.practice-hud[data-phase='complete'] .phase-pill {
+  font-size: 1.1rem;
+}
 .hud-stat {
-  font-size: 1.5rem;
+  font-size: 1.9rem;
   font-weight: 600;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 .hud-stat small {
-  font-size: 0.8rem;
+  font-size: 0.9rem;
   font-weight: 500;
   color: var(--muted);
 }
-.practice-hud .beat-dots.compact {
+.practice-hud .beat-dots {
   margin: 0;
-  gap: 8px;
   flex-wrap: nowrap;
 }
-.practice-hud .beat-dots.compact > span {
-  width: 20px;
-  height: 20px;
-}
-.practice-hud .beat-dots.compact > span.accent {
-  width: 26px;
-  height: 26px;
+.practice-hud .silent-note {
+  padding: 8px 14px;
 }
 .practice-hud .btn.hud-play {
   min-height: 56px;
@@ -421,7 +447,14 @@
 .practice-hud .btn.hud-btn {
   min-height: 56px;
   min-width: 56px;
-  padding: 10px;
+  padding: 10px 14px;
+}
+/* Quick repeated taps (tap tempo, ±) must not be taken as a double-tap zoom on the iPad. */
+.metronome-tools .btn,
+.bpm-control > button,
+.practice-hud .btn,
+.practice-console .transport .btn {
+  touch-action: manipulation;
 }
 
 /* Cycle settings */
@@ -681,7 +714,7 @@
     padding: 6px 10px;
   }
   .hud-stat {
-    font-size: 1.2rem;
+    font-size: 1.5rem;
   }
   .preset-row {
     flex-wrap: wrap;
