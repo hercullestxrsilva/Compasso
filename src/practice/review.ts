@@ -21,17 +21,31 @@ export function daysBetween(from: string, to: string) {
   );
 }
 
-/**
- * The interval of the review currently scheduled: from the previous session's day to the segment's review
- * date. Undefined when there is no usable schedule.
- */
-export function currentInterval(reviewDate: string, previousSessionDay?: string) {
-  if (!reviewDate || !previousSessionDay) return undefined;
-  const days = daysBetween(previousSessionDay, reviewDate);
-  return days > 0 ? days : undefined;
-}
-
 /** Next review date ('YYYY-MM-DD') after a session rated `rating` on `today`. */
 export function nextReviewDate(rating: Rating, today: string, previousIntervalDays?: number) {
   return addDays(today, reviewInterval(rating, previousIntervalDays));
+}
+
+/** What a trecho's schedule looked like before this session was rated. */
+export interface ReviewSchedule {
+  /** The review date it had ('' or undefined when none). */
+  reviewDate?: string;
+  /** Day of its most recent earlier session, not counting today's. */
+  lastDay?: string;
+}
+
+/**
+ * The review date after rating a session on `today`. A comfortable passage only spaces out when its review
+ * was due (overdue, today or tomorrow), doubling the real spacing since it was last practised. Before that
+ * (a second session the same day, the same trecho twice in a routine, a rating changed) the schedule is kept,
+ * at least a week away, so extra practice never pushes a review out by itself.
+ */
+export function scheduleReview(rating: Rating, today: string, schedule: ReviewSchedule = {}) {
+  if (rating !== 'comfortable') return nextReviewDate(rating, today);
+  const { reviewDate, lastDay } = schedule;
+  if (reviewDate && daysBetween(today, reviewDate) > 1) {
+    const week = addDays(today, 7);
+    return reviewDate > week ? reviewDate : week;
+  }
+  return nextReviewDate(rating, today, lastDay && lastDay < today ? daysBetween(lastDay, today) : undefined);
 }

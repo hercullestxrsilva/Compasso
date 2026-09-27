@@ -1,8 +1,7 @@
-import { useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useEffect, useState } from 'react';
 import { db } from '../../db';
 import { formatDate, localDay, type Rating, type Segment } from '../../domain';
-import { currentInterval, daysBetween, nextReviewDate } from '../../practice/review';
+import { daysBetween, scheduleReview, type ReviewSchedule } from '../../practice/review';
 import { plural } from '../../practice/setup';
 import { Modal, Field, errorText, useConfirm, type Notify } from '../common';
 
@@ -24,29 +23,40 @@ export interface ReviewInfo {
   routineTitle?: string;
 }
 
-/** The segment and the interval of the review it has now (measured from the previous session). */
-async function reviewContext(segmentId: string | undefined, sessionId: string) {
+/**
+ * The trecho and its schedule before this session is rated (see scheduleReview). Taken once per session, so
+ * changing or tapping a rating again always starts from the same point.
+ */
+export async function reviewContext(segmentId: string | undefined, sessionId: string) {
   const segment = segmentId ? await db.segments.get(segmentId) : undefined;
-  if (!segment) return { segment: undefined, interval: undefined };
-  const sessions = await db.sessions.where('segmentId').equals(segment.id).reverse().sortBy('startedAt');
-  const previous = sessions.find(s => s.id !== sessionId);
-  return {
-    segment,
-    interval: currentInterval(segment.reviewDate, previous && localDay(new Date(previous.startedAt))),
-  };
+  if (!segment) return undefined;
+  const today = localDay();
+  const days = (await db.sessions.where('segmentId').equals(segment.id).toArray())
+    .filter(s => s.id !== sessionId)
+    .map(s => localDay(new Date(s.startedAt)))
+    .filter(day => day < today)
+    .sort();
+  const schedule: ReviewSchedule = { reviewDate: segment.reviewDate, lastDay: days.at(-1) };
+  return { segment, schedule };
 }
 
-/** One-tap rating (between routine steps): also schedules the segment's next review. */
-export async function quickRate(sessionId: string, segmentId: string | undefined, rating: Rating) {
-  const { segment, interval } = await reviewContext(segmentId, sessionId);
+/**
+ * One-tap rating (between routine steps): also schedules the segment's next review from `schedule`, the
+ * baseline taken when the step ended. Returns the review date set, if any.
+ */
+export async function quickRate(
+  sessionId: string,
+  segmentId: string | undefined,
+  rating: Rating,
+  schedule?: ReviewSchedule,
+) {
+  const baseline = schedule ?? (await reviewContext(segmentId, sessionId))?.schedule;
+  const reviewDate = segmentId && baseline ? scheduleReview(rating, localDay(), baseline) : undefined;
   await db.transaction('rw', [db.sessions, db.segments], async () => {
     await db.sessions.update(sessionId, { rating });
-    if (segment)
-      await db.segments.update(segment.id, {
-        rating,
-        reviewDate: nextReviewDate(rating, localDay(), interval),
-      });
+    if (segmentId && reviewDate) await db.segments.update(segmentId, { rating, reviewDate });
   });
+  return { reviewDate, schedule: baseline };
 }
 
 /** "Como foi a prática?" — nothing is preselected; the session itself is already saved. */
@@ -57,16 +67,23 @@ export default function SessionReview({
 }: {
   info: ReviewInfo;
   notify: Notify;
-  /** Called when the modal closes; 
-aisedBpm when the segment's BPM was updated. */
+  /** Called when the modal closes, with the new BPM when the segment's tempo was updated. */
   onDone: (raisedBpm?: number) => void;
 }) {
   const confirm = useConfirm();
-  const context = useLiveQuery(
-    () => reviewContext(info.segmentId, info.sessionId),
-    [info.segmentId, info.sessionId],
-  );
-  const segment: Segment | undefined = context?.segment;
+  // Read once: the schedule must not move while the student changes the rating.
+  const [baseline, setBaseline] = useState<Awaited<ReturnType<typeof reviewContext>>>();
+  useEffect(() => {
+    let alive = true;
+    reviewContext(info.segmentId, info.sessionId).then(
+      value => alive && setBaseline(value),
+      () => {},
+    );
+    return () => {
+      alive = false;
+    };
+  }, [info.segmentId, info.sessionId]);
+  const segment: Segment | undefined = baseline?.segment;
   const [rating, setRating] = useState<Rating>(),
     [note, setNote] = useState(''),
     [nextStep, setNextStep] = useState(''),
@@ -74,7 +91,7 @@ aisedBpm when the segment's BPM was updated. */
     [raiseBpm, setRaiseBpm] = useState(false),
     [saving, setSaving] = useState(false);
   const today = localDay();
-  const suggested = rating && segment ? nextReviewDate(rating, today, context?.interval) : '';
+  const suggested = rating && baseline ? scheduleReview(rating, today, baseline.schedule) : '';
   const review = reviewDate ?? suggested;
   const offerBpm = segment && info.maxBpm && info.maxBpm > segment.bpm ? info.maxBpm : undefined;
   const dirty = Boolean(rating || note.trim() || nextStep.trim() || raiseBpm);
