@@ -105,15 +105,24 @@ export function tapTempo(taps: number[], at: number) {
 }
 
 const statusOrder = { studying: 0, planned: 1, learned: 2 } as const;
-/** Pieces (studying first) with their segments in the order they were marked; orphans come last. */
-export function groupByPiece<S extends Pick<Segment, 'pieceId' | 'createdAt'>>(
+/**
+ * Pieces (studying first) with their segments in the order they were marked, then the warm-up collections with
+ * their exercises in book order; orphans come last.
+ */
+export function groupByPiece<S extends Pick<Segment, 'pieceId' | 'createdAt' | 'exercise'>>(
   pieces: Piece[],
   segments: S[],
 ) {
   const sorted = [...pieces].sort(
-    (a, b) => statusOrder[a.status] - statusOrder[b.status] || a.title.localeCompare(b.title, 'pt-BR'),
+    (a, b) =>
+      Number(!!a.warmup) - Number(!!b.warmup) ||
+      (a.warmup ? a.createdAt.localeCompare(b.createdAt) : 0) ||
+      statusOrder[a.status] - statusOrder[b.status] ||
+      a.title.localeCompare(b.title, 'pt-BR'),
   );
-  const bySegment = (a: S, b: S) => a.createdAt.localeCompare(b.createdAt);
+  const bySegment = (a: S, b: S) =>
+    (a.exercise?.order ?? Number.MAX_SAFE_INTEGER) - (b.exercise?.order ?? Number.MAX_SAFE_INTEGER) ||
+    a.createdAt.localeCompare(b.createdAt);
   const groups: { piece?: Piece; segments: S[] }[] = sorted.map(piece => ({
     piece,
     segments: segments.filter(s => s.pieceId === piece.id).sort(bySegment),

@@ -41,7 +41,17 @@ Abra http://127.0.0.1:5188/. Para a API opcional, rode `npm run server` em um se
 
 Em **Evolução → Minhas gravações**, acompanhe o nível do microfone durante uma nova tentativa. Se o indicador não reagir, selecione outra entrada antes de gravar novamente. Para uma gravação antiga cuja barra de reprodução não mostra a duração, use **Criar cópia reproduzível**: o aplicativo tenta gerar um WAV com duração definida, mantendo o arquivo original e oferecendo **Baixar arquivo**. Se o áudio original não contiver sinal ou não puder ser decodificado, uma cópia não consegue recuperar o som ausente.
 
-Rotinas permitem organizar passos com trechos e minutos, inclusive A–B–A. Cada passo é iniciado manualmente. A camada “Professor” é uma classificação feita por você; ainda não existe uma conta colaborativa de professor.
+Rotinas permitem organizar passos com trechos e minutos, inclusive A–B–A; os passos avançam sozinhos, com uma contagem curta entre eles. A camada “Professor” é uma classificação feita por você; ainda não existe uma conta colaborativa de professor.
+
+## Aquecimento
+
+Em **Aquecimento**, importe PDFs de escalas ou de estudos (Czerny, Hanon…). Cada arquivo vira uma coleção, e cada escala ou estudo, um exercício com o mesmo metrônomo, histórico, revisão e gráfico de andamento dos trechos.
+
+- **Livros de escalas conhecidos** são divididos automaticamente: as escalas maiores em duas oitavas da Piano Street (12 tonalidades) e as escalas menores em duas oitavas da eNovativePiano (15 tonalidades × natural, harmônica e melódica). O arquivo é reconhecido pela impressão digital ou pelo título, número e tamanho das páginas.
+- **PDFs com o nome de cada escala no texto** (“C Major”, “Ré menor melódica”…) também são divididos sozinhos.
+- **Outros arquivos**: escolha um exercício por página ou marque cada exercício na partitura em **Organizar exercícios**, com a ferramenta **Trecho**. Nomes e ordem podem ser ajustados na lista.
+
+Para escalas, escolha a forma (maior, natural, harmônica, melódica) e a tonalidade, organizadas pelo ciclo de quintas; **Sortear** prefere as praticadas há mais tempo. **Praticar** abre o exercício em Praticar, com quatro compassos e o clique de colcheias. Em **Hoje**, o plano começa com um aquecimento curto (5 min): uma revisão vencida ou, senão, o próximo exercício do rodízio. Os PDFs ficam só no seu dispositivo (e nos seus backups); eles não fazem parte do projeto.
 
 ## Uso offline e iPad
 

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Plus, Search, ArrowUpRight, MoreHorizontal, BookOpen, FileMusic, Trash2 } from 'lucide-react';
 import { db, removePiece, storeAsset } from '../db';
-import { matchesSearch, statuses, uid, now, type Piece, type PieceStatus } from '../domain';
+import { matchesSearch, statuses, uid, now, type Piece, type PieceStatus, isWarmup } from '../domain';
 import { Modal, Field, Empty, ErrorBox, Badge, errorText, useConfirm, type Notify } from './common';
 import { forgetHistory } from '../annotation-history';
 import { forgetPieceView, titleFromFileName } from '../score-view';
@@ -143,7 +143,9 @@ export function PieceForm({
 }
 export function Library({ onOpen, notify }: { onOpen: (id: string) => void; notify: Notify }) {
   const confirm = useConfirm();
-  const pieces = useLiveQuery(() => db.pieces.orderBy('updatedAt').reverse().toArray()) ?? [];
+  const allPieces = useLiveQuery(() => db.pieces.orderBy('updatedAt').reverse().toArray()) ?? [];
+  // Warm-up collections are managed in Aquecimento.
+  const pieces = allPieces.filter(p => !isWarmup(p));
   const scores = useLiveQuery(() => db.scores.toArray()) ?? [];
   const [search, setSearch] = useState(''),
     [filter, setFilter] = useState('all'),

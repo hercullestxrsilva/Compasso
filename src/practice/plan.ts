@@ -7,7 +7,8 @@ export type PlanReason =
   | { kind: 'difficult' }
   | { kind: 'task'; title: string }
   | { kind: 'recent' }
-  | { kind: 'resume' };
+  | { kind: 'resume' }
+  | { kind: 'warmup' };
 
 export interface PlanItem {
   segment: Segment;
@@ -44,6 +45,7 @@ const baseMinutes: Record<PlanReason['kind'], number> = {
   task: 5,
   recent: 4,
   resume: 4,
+  warmup: 5,
 };
 /** Shortest step worth scheduling. */
 const MIN_ITEM = 3;
@@ -79,8 +81,51 @@ export function lastPracticeBySegment(sessions: Session[]) {
   return last;
 }
 
-export function buildDailyPlan({ segments, sessions, tasks, pieces, today, budget }: PlanInput): DailyPlan {
-  const byId = new Map(segments.map(s => [s.id, s]));
+/** Warm-up exercises (scales, études), in collection order: collections as imported, then each book's order. */
+function warmupSegments(segments: Segment[], pieces: Piece[]) {
+  const collections = new Map(pieces.filter(p => p.warmup).map(p => [p.id, p.createdAt]));
+  return segments
+    .filter(s => collections.has(s.pieceId))
+    .sort(
+      (a, b) =>
+        collections.get(a.pieceId)!.localeCompare(collections.get(b.pieceId)!) ||
+        (a.exercise?.order ?? Number.MAX_SAFE_INTEGER) - (b.exercise?.order ?? Number.MAX_SAFE_INTEGER) ||
+        a.createdAt.localeCompare(b.createdAt),
+    );
+}
+
+/**
+ * Today's warm-up: an exercise whose review is due, otherwise the one practised least recently — never practised
+ * first, in book order — so the days rotate through the circle of fifths.
+ */
+export function pickWarmup(
+  warmups: Segment[],
+  last: Map<string, string>,
+  today: string,
+): { segment: Segment; reasons: PlanReason[] } | undefined {
+  const due = dueReviews(warmups, today)[0];
+  if (due)
+    return {
+      segment: due.segment,
+      reasons: [
+        { kind: 'warmup' },
+        due.daysOverdue > 0 ? { kind: 'overdue', days: due.daysOverdue } : { kind: 'due' },
+      ],
+    };
+  // Array sort is stable: exercises never practised (or practised on the same day) keep the book's order.
+  const next = [...warmups].sort((a, b) => (last.get(a.id) ?? '').localeCompare(last.get(b.id) ?? ''))[0];
+  return next && { segment: next, reasons: [{ kind: 'warmup' }] };
+}
+
+export function buildDailyPlan({
+  segments: all,
+  sessions,
+  tasks,
+  pieces,
+  today,
+  budget,
+}: PlanInput): DailyPlan {
+  const byId = new Map(all.map(s => [s.id, s]));
   const pieceById = new Map(pieces.map(p => [p.id, p]));
   const last = lastPracticeBySegment(sessions);
   const candidates = new Map<string, { segment: Segment; reasons: PlanReason[] }>();
@@ -89,6 +134,11 @@ export function buildDailyPlan({ segments, sessions, tasks, pieces, today, budge
     if (existing) existing.reasons.push(reason);
     else candidates.set(segment.id, { segment, reasons: [reason] });
   };
+
+  // One warm-up opens the plan; the rest of the plan is about the repertoire.
+  const warmup = pickWarmup(warmupSegments(all, pieces), last, today);
+  if (warmup) candidates.set(warmup.segment.id, { segment: warmup.segment, reasons: warmup.reasons });
+  const segments = all.filter(s => !pieceById.get(s.pieceId)?.warmup);
 
   for (const { segment, daysOverdue } of dueReviews(segments, today))
     add(segment, daysOverdue > 0 ? { kind: 'overdue', days: daysOverdue } : { kind: 'due' });
@@ -135,7 +185,7 @@ export function buildDailyPlan({ segments, sessions, tasks, pieces, today, budge
   // After a break the passes above can leave the plan empty exactly when it helps most: bring back the pieces
   // in study, the most recently practised first.
   pieces
-    .filter(p => p.status === 'studying' && !recentPieces.includes(p.id))
+    .filter(p => p.status === 'studying' && !p.warmup && !recentPieces.includes(p.id))
     .sort((a, b) => (lastByPiece.get(b.id) ?? '').localeCompare(lastByPiece.get(a.id) ?? ''))
     .forEach(p => {
       if (candidates.size >= MIN_CANDIDATES) return;
@@ -169,10 +219,13 @@ export function buildDailyPlan({ segments, sessions, tasks, pieces, today, budge
       lastPractice: last.get(segment.id),
     });
   }
+  // A warm-up stays short: spare minutes go to the repertoire.
+  const cap = (item: PlanItem) =>
+    item.reasons.some(r => r.kind === 'warmup') ? baseMinutes.warmup : MAX_ITEM;
   for (let grew = true; remaining > 0 && grew;) {
     grew = false;
     for (const item of items)
-      if (remaining > 0 && item.minutes < MAX_ITEM) {
+      if (remaining > 0 && item.minutes < cap(item)) {
         item.minutes++;
         remaining--;
         grew = true;
@@ -195,6 +248,8 @@ export function reasonText(reason: PlanReason) {
       return 'peça praticada nesta semana';
     case 'resume':
       return 'retomar a peça';
+    case 'warmup':
+      return 'aquecimento do dia';
   }
 }
 
@@ -205,11 +260,14 @@ export type FocusSource = 'resume' | 'review' | 'suggestion';
  * comfortable), otherwise the most overdue review, otherwise a trecho of a piece in study that is not comfortable.
  */
 export function pickFocus(
-  segments: Segment[],
+  all: Segment[],
   sessions: Session[],
   pieces: Piece[],
   today: string,
 ): { segment: Segment; source: FocusSource; session?: Session } | undefined {
+  // The card is about the repertoire: scales and études have their own place in the plan.
+  const warmups = new Set(pieces.filter(p => p.warmup).map(p => p.id));
+  const segments = all.filter(s => !warmups.has(s.pieceId));
   const byId = new Map(segments.map(s => [s.id, s]));
   const latest = sessions
     .filter(s => s.segmentId && byId.has(s.segmentId) && s.activeSeconds > 0)

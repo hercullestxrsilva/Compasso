@@ -275,3 +275,49 @@ describe('focus card', () => {
     expect(pickFocus([], [], pieces, today)).toBeUndefined();
   });
 });
+
+describe('warm-up in the plan', () => {
+  const warmupPiece: Piece = { ...piece('w'), title: 'Escalas maiores', warmup: { kind: 'scales' } };
+  const scale = (id: string, order: number, extra: Partial<Segment> = {}) =>
+    segment(id, { pieceId: 'w', title: `Escala ${id}`, exercise: { order }, ...extra });
+  const scales = [scale('sol', 1), scale('do', 0), scale('re', 2)];
+
+  it('opens with one short warm-up, rotating from the one practised least recently', () => {
+    const plan = buildDailyPlan({
+      segments: [...scales, segment('a')],
+      sessions: [session('do', '2026-09-25T10:00:00')],
+      tasks: [],
+      pieces: [piece('p1'), warmupPiece],
+      today,
+      budget: 45,
+    });
+    expect(plan.items[0].segment.id).toBe('sol');
+    expect(plan.items[0].reasons).toEqual([{ kind: 'warmup' }]);
+    expect(plan.items[0].minutes).toBe(5);
+    expect(plan.items.filter(i => i.segment.pieceId === 'w')).toHaveLength(1);
+    expect(reasonText({ kind: 'warmup' })).toBe('aquecimento do dia');
+  });
+  it('prefers a warm-up whose review is due and keeps warm-ups out of the repertoire passes', () => {
+    const plan = buildDailyPlan({
+      segments: [scale('do', 0), scale('re', 1, { reviewDate: '2026-09-20', rating: 'difficult' })],
+      sessions: [],
+      tasks: [],
+      pieces: [warmupPiece],
+      today,
+      budget: 30,
+    });
+    expect(plan.items.map(i => i.segment.id)).toEqual(['re']);
+    expect(plan.items[0].reasons).toEqual([{ kind: 'warmup' }, { kind: 'overdue', days: 6 }]);
+    // No repertoire: the spare minutes do not stretch the warm-up.
+    expect(plan.minutes).toBe(5);
+  });
+  it('leaves warm-ups out of the focus card', () => {
+    const focus = pickFocus(
+      [scale('do', 0), segment('a')],
+      [session('do', '2026-09-25T10:00:00'), session('a', '2026-09-20T10:00:00')],
+      [piece('p1'), warmupPiece],
+      today,
+    );
+    expect(focus?.segment.id).toBe('a');
+  });
+});

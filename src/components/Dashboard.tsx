@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import BrandSymbol from './BrandSymbol';
 import { db } from '../db';
-import { localDay, formatDate, hands, uid, type Session } from '../domain';
+import { localDay, formatDate, hands, uid, type Session, isWarmup } from '../domain';
 import { Badge, Empty, Field, Modal, errorText, type Notify } from './common';
 import { pieceTone } from './Library';
 import { buildDailyPlan, dueReviews, pickFocus, planToRoutine, reasonText } from '../practice/plan';
@@ -93,7 +93,10 @@ export default function Dashboard({
   onAdd: () => void;
   notify: Notify;
 }) {
-  const pieces = useLiveQuery(() => db.pieces.orderBy('updatedAt').reverse().toArray()) ?? [];
+  const allPieces = useLiveQuery(() => db.pieces.orderBy('updatedAt').reverse().toArray()) ?? [];
+  // Warm-up collections (scales, études) live in Aquecimento, not in the repertoire.
+  const pieces = allPieces.filter(p => !isWarmup(p)),
+    warmupIds = new Set(allPieces.filter(isWarmup).map(p => p.id));
   const segments = useLiveQuery(() => db.segments.toArray()) ?? [];
   const sessions = useLiveQuery(() => db.sessions.toArray()) ?? [];
   const lessons = useLiveQuery(() => db.lessons.orderBy('date').reverse().limit(3).toArray()) ?? [];
@@ -107,13 +110,16 @@ export default function Dashboard({
   const minutes = Math.round(todaySessions.reduce((s, r) => s + r.activeSeconds, 0) / 60),
     studying = pieces.filter(p => p.status === 'studying');
   const pending = tasks.filter(t => !t.done),
-    reviews = dueReviews(segments, today);
-  const plan = buildDailyPlan({ segments, sessions, tasks, pieces, today, budget });
+    reviews = dueReviews(
+      segments.filter(s => !warmupIds.has(s.pieceId)),
+      today,
+    );
+  const plan = buildDailyPlan({ segments, sessions, tasks, pieces: allPieces, today, budget });
   const routineItems = planToRoutine(plan.items);
   // Saving the same plan twice would only duplicate the routine; the button re-enables when the plan changes.
   const planKey = `${today}:${JSON.stringify(routineItems)}`;
   const [savedPlan, setSavedPlan] = useState('');
-  const focus = pickFocus(segments, sessions, pieces, today);
+  const focus = pickFocus(segments, sessions, allPieces, today);
   const next = focus?.segment;
   const lastBpm = focus?.session ? reachedBpm(focus.session) : null;
   const overdue = focus?.source === 'review' ? reviews.find(r => r.segment.id === next?.id)?.daysOverdue : 0;
@@ -443,7 +449,7 @@ export default function Dashboard({
                   </button>
                   <div>
                     <strong>{t.title}</strong>
-                    <small>{pieces.find(p => p.id === t.pieceId)?.title ?? 'Tarefa da aula'}</small>
+                    <small>{allPieces.find(p => p.id === t.pieceId)?.title ?? 'Tarefa da aula'}</small>
                   </div>
                 </div>
               ))

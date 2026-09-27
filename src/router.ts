@@ -3,13 +3,15 @@
  * the address survives a reload and Safari's swipe back. The home-screen app always relaunches at its start
  * address (no hash), so the shell also saves the last screen and reopens it from resumeRoute().
  */
-export type View = 'home' | 'library' | 'practice' | 'lessons' | 'progress' | 'settings';
+export type View = 'home' | 'library' | 'warmups' | 'practice' | 'lessons' | 'progress' | 'settings';
 export type ProgressTab = 'history' | 'recordings' | 'review';
 
 export interface Route {
   view: View;
-  /** library: the open piece. */
+  /** library: the open piece; warmups: the open collection. */
   pieceId?: string;
+  /** warmups: the chosen exercise of the collection. */
+  exerciseId?: string;
   /** practice: a segment id, or 'piece:<pieceId>' for the whole piece. */
   target?: string;
   /** lessons: the open lesson. */
@@ -21,6 +23,7 @@ export interface Route {
 const viewSlugs: Record<View, string> = {
   home: 'hoje',
   library: 'repertorio',
+  warmups: 'aquecimento',
   practice: 'praticar',
   lessons: 'aulas',
   progress: 'evolucao',
@@ -34,6 +37,7 @@ const tabSlugs: Record<ProgressTab, string> = {
 export const viewTitles: Record<View, string> = {
   home: 'Hoje',
   library: 'Repertório',
+  warmups: 'Aquecimento',
   practice: 'Praticar',
   lessons: 'Aulas',
   progress: 'Evolução',
@@ -70,6 +74,10 @@ function cleanTarget(part: string | undefined) {
 export function normalizeRoute(route: Route): Route {
   const { view } = route;
   if (view === 'library' && route.pieceId) return { view, pieceId: route.pieceId };
+  if (view === 'warmups' && route.pieceId)
+    return route.exerciseId
+      ? { view, pieceId: route.pieceId, exerciseId: route.exerciseId }
+      : { view, pieceId: route.pieceId };
   if (view === 'practice' && route.target) return { view, target: route.target };
   if (view === 'lessons' && route.lessonId) return { view, lessonId: route.lessonId };
   if (view === 'progress' && route.tab) return { view, tab: route.tab };
@@ -79,11 +87,13 @@ export function normalizeRoute(route: Route): Route {
 /** Reads a location hash. Anything unknown falls back to the closest valid screen (Hoje at worst). */
 export function parseRoute(hash: string): Route {
   const path = hash.replace(/^#/, '').replace(/[?#].*$/, '');
-  const [first, detail] = path.split('/').filter(Boolean);
+  const [first, detail, extra] = path.split('/').filter(Boolean);
   const slug = first === undefined ? '' : simplify(decode(first) ?? '');
   const view = views.find(v => viewSlugs[v] === slug);
   if (!view) return { view: 'home' };
   if (view === 'library') return normalizeRoute({ view, pieceId: cleanId(detail) });
+  if (view === 'warmups')
+    return normalizeRoute({ view, pieceId: cleanId(detail), exerciseId: cleanId(extra) });
   if (view === 'practice') return normalizeRoute({ view, target: cleanTarget(detail) });
   if (view === 'lessons') return normalizeRoute({ view, lessonId: cleanId(detail) });
   if (view === 'progress') {
@@ -97,7 +107,8 @@ export function parseRoute(hash: string): Route {
 export function formatRoute(route: Route): string {
   const r = normalizeRoute(route);
   const base = `#/${viewSlugs[r.view]}`;
-  if (r.pieceId) return `${base}/${encodeURIComponent(r.pieceId)}`;
+  if (r.pieceId)
+    return `${base}/${encodeURIComponent(r.pieceId)}${r.exerciseId ? `/${encodeURIComponent(r.exerciseId)}` : ''}`;
   if (r.target)
     return `${base}/${
       r.target.startsWith(PIECE_PREFIX)

@@ -207,7 +207,14 @@ export default function Routines({
                       {groups.length ? 'Escolha um trecho…' : 'Nenhum trecho marcado ainda'}
                     </option>
                     {groups.map(g => (
-                      <optgroup key={g.piece?.id ?? 'outros'} label={g.piece?.title ?? 'Outros trechos'}>
+                      <optgroup
+                        key={g.piece?.id ?? 'outros'}
+                        label={
+                          g.piece?.warmup
+                            ? `Aquecimento · ${g.piece.title}`
+                            : (g.piece?.title ?? 'Outros trechos')
+                        }
+                      >
                         {g.segments.map(s => (
                           <option key={s.id} value={s.id}>
                             {s.title}

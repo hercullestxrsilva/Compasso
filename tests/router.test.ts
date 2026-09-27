@@ -37,6 +37,15 @@ describe('parseRoute', () => {
     expect(parseRoute('#/praticar/piece:p1')).toEqual({ view: 'practice', target: 'piece:p1' });
     expect(parseRoute('#/praticar/piece%3Ap1')).toEqual({ view: 'practice', target: 'piece:p1' });
   });
+  it('reads the warm-up collection and exercise', () => {
+    expect(parseRoute('#/aquecimento')).toEqual({ view: 'warmups' });
+    expect(parseRoute('#/aquecimento/c1')).toEqual({ view: 'warmups', pieceId: 'c1' });
+    expect(parseRoute('#/aquecimento/c1/e2')).toEqual({ view: 'warmups', pieceId: 'c1', exerciseId: 'e2' });
+    expect(formatRoute({ view: 'warmups', pieceId: 'c 1', exerciseId: 'e2' })).toBe('#/aquecimento/c%201/e2');
+    // An exercise only means something inside its collection.
+    expect(formatRoute({ view: 'warmups', exerciseId: 'e2' })).toBe('#/aquecimento');
+    expect(pageKey({ view: 'warmups', pieceId: 'c1', exerciseId: 'e2' })).toBe(pageKey({ view: 'warmups' }));
+  });
   it('reads the Evolução tabs', () => {
     expect(parseRoute('#/evolucao/historico')).toEqual({ view: 'progress', tab: 'history' });
     expect(parseRoute('#/evolucao/gravacoes')).toEqual({ view: 'progress', tab: 'recordings' });

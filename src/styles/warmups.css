@@ -1,0 +1,306 @@
+/* Aquecimento: collections of scales and études, the key picker and the exercise card. */
+
+.warmup-tabs {
+  margin-bottom: var(--space-5);
+}
+.warmup-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+.warmup-picker {
+  display: grid;
+  gap: var(--space-5);
+}
+.scale-picker {
+  display: grid;
+  gap: var(--space-5);
+}
+.warmup-modes {
+  flex-wrap: wrap;
+}
+.key-row {
+  display: grid;
+  gap: var(--space-2);
+}
+.key-row-label {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+.key-chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: var(--space-2);
+}
+.key-chip {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 2px;
+  min-height: 60px;
+  padding: var(--space-2) var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--ink);
+  text-align: center;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.key-chip strong {
+  font-family: var(--font-serif);
+  font-size: var(--fs-xl);
+  font-weight: 400;
+  line-height: 1.1;
+}
+.key-chip small {
+  font-size: var(--fs-micro);
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+.key-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.key-chip.active small {
+  color: var(--accent-ink);
+}
+.key-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--brand-accent);
+}
+.exercise-chips {
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+}
+.exercise-chips .key-chip strong {
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.warmup-collection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  border-top: 1px solid var(--line-soft);
+  padding-top: var(--space-3);
+}
+.warmup-panel .danger-link {
+  color: var(--danger-ink);
+}
+
+.warmup-card {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.warmup-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.warmup-card-head h2 {
+  font-family: var(--font-serif);
+  font-size: var(--fs-3xl);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  margin: var(--space-1) 0;
+}
+.warmup-card-head .hint {
+  margin: 0;
+}
+.warmup-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.warmup-card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+}
+.warmup-stats {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: var(--fs-sm);
+}
+
+/* The crop is printed music: white paper in both themes. */
+.region-preview {
+  position: relative;
+  background: var(--paper-white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  min-height: 120px;
+}
+.region-preview canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.region-preview.is-loading canvas {
+  opacity: 0.35;
+}
+
+.warmup-editor {
+  display: grid;
+  gap: var(--space-4);
+}
+.warmup-editor-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.warmup-editor-head h2 {
+  margin-bottom: var(--space-1);
+}
+.warmup-editor-head .hint {
+  margin: 0;
+  max-width: 60ch;
+}
+.warmup-editor-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: var(--space-5);
+  align-items: start;
+}
+.warmup-editor-list h3 {
+  margin-bottom: var(--space-3);
+}
+.warmup-editor-list ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.warmup-editor-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  border-radius: var(--radius-sm);
+  padding: var(--space-1);
+}
+.warmup-editor-list li.focused {
+  background: var(--accent-soft);
+}
+.warmup-editor-list input {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+}
+
+.import-picker {
+  margin: var(--space-2) 0 var(--space-4);
+}
+.import-list {
+  list-style: none;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+.import-item {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  display: grid;
+  gap: var(--space-2);
+}
+.import-file {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.import-file strong {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.import-found {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--success);
+  font-weight: 600;
+  font-size: var(--fs-sm);
+}
+.import-options .hint {
+  margin: 0 0 var(--space-2);
+}
+.import-split {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.import-split legend {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+.import-split label,
+.import-duplicate {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap);
+  font-size: var(--fs-sm);
+}
+.import-duplicate {
+  color: var(--warning);
+}
+
+@media (max-width: 1100px) {
+  .warmup-layout,
+  .warmup-editor-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* Beside the score, a long book (45 scales) scrolls its own list while the page stays in view. */
+@media (min-width: 1101px) {
+  .warmup-editor-list {
+    position: sticky;
+    top: var(--space-4);
+    max-height: calc(100vh - 2 * var(--space-4));
+    overflow-y: auto;
+  }
+}
+@media (hover: hover) {
+  .key-chip:hover:not(.active) {
+    border-color: var(--line-strong);
+    background: var(--surface-2);
+  }
+}
+.key-chip:active {
+  transform: scale(0.97);
+}
+@media (prefers-reduced-motion: reduce) {
+  .key-chip {
+    transition: none;
+  }
+  .key-chip:active {
+    transform: none;
+  }
+}

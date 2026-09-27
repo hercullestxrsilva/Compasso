@@ -4,6 +4,8 @@ export type PieceStatus = keyof typeof statuses;
 export const hands = { left: 'Esquerda', right: 'Direita', both: 'Ambas' } as const;
 export type Hand = keyof typeof hands;
 export type Rating = 'difficult' | 'improving' | 'comfortable';
+export type ScaleMode = 'major' | 'natural-minor' | 'harmonic-minor' | 'melodic-minor';
+export type WarmupKind = 'scales' | 'etudes' | 'other';
 export interface Piece {
   id: string;
   title: string;
@@ -12,7 +14,13 @@ export interface Piece {
   tags: string;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Set when the piece is a warm-up collection (all major scales, Czerny op. 599…) shown in Aquecimento instead
+   * of the repertoire. fingerprint is the SHA-256 of the imported file, used to recognise it again.
+   */
+  warmup?: { kind: WarmupKind; fingerprint?: string; source?: string };
 }
+export const isWarmup = (piece?: Pick<Piece, 'warmup'> | null) => !!piece?.warmup;
 export interface Asset {
   id: string;
   name: string;
@@ -69,6 +77,8 @@ export interface Segment {
   createdAt: string;
   /** Last cycle settings used for this segment (meter, bars, ramp…), restored when it is selected again. */
   practiceConfig?: Partial<PracticeConfig>;
+  /** Warm-up exercises: position in the collection and, for scales, tonic (e.g. "F#", "Bb") and mode. */
+  exercise?: { order: number; tonic?: string; mode?: ScaleMode };
 }
 export interface PracticeConfig {
   bpm: number;

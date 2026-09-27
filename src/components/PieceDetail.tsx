@@ -15,7 +15,7 @@ import {
   Layers,
   SquareDashed,
 } from 'lucide-react';
-import { db, storeAsset } from '../db';
+import { db, removeSegment as deleteSegment, storeAsset } from '../db';
 import {
   now,
   uid,
@@ -490,11 +490,7 @@ export default function PieceDetail({
     });
     if (!ok) return;
     try {
-      await db.transaction('rw', [db.segments, db.presets, db.tasks], async () => {
-        await db.segments.delete(segment.id);
-        await db.presets.where('segmentId').equals(segment.id).delete();
-        await db.tasks.where('segmentId').equals(segment.id).modify({ segmentId: undefined });
-      });
+      await deleteSegment(segment.id);
       setTaskSegment(current => (current === segment.id ? '' : current));
       if (marking?.id === segment.id) setMarking(null);
       notify('Trecho excluído.');

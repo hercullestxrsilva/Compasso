@@ -130,6 +130,19 @@ describe('practice setup', () => {
     expect(groups[1].segments.map(s => s.id)).toEqual(['3', '2']);
     expect(groups[3].segments.map(s => s.id)).toEqual(['4']);
   });
+  it('lists warm-up collections after the repertoire, exercises in book order', () => {
+    const scales: Piece = { ...piece('w', 'Escalas maiores', 'studying'), warmup: { kind: 'scales' } };
+    const groups = groupByPiece(
+      [scales, piece('b', 'Noturno', 'learned')],
+      [
+        segment({ id: 'sol', pieceId: 'w', exercise: { order: 1 }, createdAt: '2026-09-01' }),
+        segment({ id: 'do', pieceId: 'w', exercise: { order: 0 }, createdAt: '2026-09-02' }),
+        segment({ id: 't', pieceId: 'b' }),
+      ],
+    );
+    expect(groups.map(g => g.piece?.id)).toEqual(['b', 'w']);
+    expect(groups[1].segments.map(s => s.id)).toEqual(['do', 'sol']);
+  });
   it('writes Portuguese plurals', () => {
     expect(plural(1, 'repetição', 'repetições')).toBe('1 repetição');
     expect(plural(3, 'repetição', 'repetições')).toBe('3 repetições');

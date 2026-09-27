@@ -158,7 +158,17 @@ export function TargetOptions({ groups }: { groups: { piece?: Piece; segments: S
     <>
       <option value="">Prática livre / metrônomo</option>
       {groups.map(g =>
-        g.piece ? (
+        g.piece?.warmup ? (
+          g.segments.length > 0 && (
+            <optgroup key={g.piece.id} label={`Aquecimento · ${g.piece.title}`}>
+              {g.segments.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.title}
+                </option>
+              ))}
+            </optgroup>
+          )
+        ) : g.piece ? (
           <optgroup key={g.piece.id} label={g.piece.title}>
             <option value={pieceTarget(g.piece.id)}>Peça inteira: {g.piece.title}</option>
             {g.segments.map(s => (

@@ -31,6 +31,11 @@ const tablesSchema = z.object({
         tags: str,
         createdAt: date,
         updatedAt: date,
+        warmup: row({
+          kind: z.enum(['scales', 'etudes', 'other']),
+          fingerprint: z.string().max(128).optional(),
+          source: z.string().max(200).optional(),
+        }).optional(),
       }),
     )
     .max(10000),
@@ -77,6 +82,11 @@ const tablesSchema = z.object({
         reviewDate: date,
         createdAt: date,
         practiceConfig: config.partial().optional(),
+        exercise: row({
+          order: z.number().int().min(0).max(1_000_000),
+          tonic: z.string().max(8).optional(),
+          mode: z.enum(['major', 'natural-minor', 'harmonic-minor', 'melodic-minor']).optional(),
+        }).optional(),
       }),
     )
     .max(20000),

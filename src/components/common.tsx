@@ -8,7 +8,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import type { ReactNode } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import { X } from 'lucide-react';
 import BrandSymbol from './BrandSymbol';
 
@@ -215,4 +215,22 @@ export function download(blob: Blob, name: string) {
 }
 export function errorText(error: unknown) {
   return error instanceof Error ? error.message : 'Não foi possível concluir. Tente novamente.';
+}
+
+/** Arrow keys, Home and End move between the tabs of a role="tablist" (roving focus); put it on the list. */
+export function onTabListKeyDown(e: ReactKeyboardEvent<HTMLElement>) {
+  const tabs = [...e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]:not(:disabled)')];
+  const at = tabs.indexOf(document.activeElement as HTMLButtonElement);
+  const moves: Record<string, number> = {
+    ArrowRight: at + 1,
+    ArrowLeft: at - 1,
+    Home: 0,
+    End: tabs.length - 1,
+  };
+  const step = moves[e.key];
+  if (at < 0 || step === undefined) return;
+  e.preventDefault();
+  const next = tabs[(step + tabs.length) % tabs.length];
+  next.focus();
+  next.click();
 }

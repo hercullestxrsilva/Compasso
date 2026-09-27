@@ -1,5 +1,12 @@
 # Estado da implementação · 27/09/2026
 
+## Aquecimento
+
+- Nova tela **Aquecimento** (`#/aquecimento`): coleções de escalas e estudos importadas de PDF, com escolha da escala pela forma e pelo ciclo de quintas, prévia recortada da partitura, **Sortear** e **Praticar**.
+- Divisão automática dos dois livros usados pelo estudante (12 escalas maiores; 15 menores × 3 formas), reconhecidos pela impressão digital SHA-256 ou pela assinatura da edição; PDFs com títulos de escala no texto também são divididos. Para Czerny e outros: um exercício por página ou marcação manual em **Organizar exercícios**.
+- Coleções usam peça/partitura/trecho existentes (`Piece.warmup`, `Segment.exercise`, campos opcionais no backup), então metrônomo, sessões, revisão e evolução valem para as escalas. Ficam fora do Repertório; o plano de **Hoje** começa com um aquecimento de 5 min em rodízio.
+- Os PDFs têm direitos autorais e não estão no repositório: só as posições medidas das escalas. Testes: unitários (layouts, detecção, plano, rotas) e ponta a ponta com PDFs sintéticos; verificação manual com os arquivos reais em navegador isolado.
+
 ## Versão 0.2
 
 Avaliação completa do app, auditoria de usabilidade/visual/acessibilidade (76 achados) e implementação revisada por agentes independentes. Resumo:

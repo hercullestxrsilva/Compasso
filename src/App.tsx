@@ -14,6 +14,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import {
   LayoutDashboard,
   LibraryBig,
+  Flame,
   AudioLines,
   Headphones,
   ChartNoAxesCombined,
@@ -31,6 +32,7 @@ import { Library, PieceForm } from './components/Library';
 import { ConfirmProvider, Modal, useTopModal, type Notify, type NotifyTone } from './components/common';
 import { TopbarActivity, TopbarStatus, activityHead, byUrgency } from './components/Topbar';
 import { db } from './db';
+import { isWarmup } from './domain';
 import { getActivities, useActivities, type Activity } from './activity';
 import { getUnsaved, type UnsavedWork } from './unsaved';
 import { applyTheme } from './theme';
@@ -55,12 +57,14 @@ const loadPieceDetail = () => import('./components/PieceDetail'),
   loadPractice = () => import('./components/Practice'),
   loadLessons = () => import('./components/Lessons'),
   loadProgress = () => import('./components/Progress'),
-  loadSettings = () => import('./components/Settings');
+  loadSettings = () => import('./components/Settings'),
+  loadWarmups = () => import('./components/Warmups');
 const PieceDetail = lazy(loadPieceDetail),
   Practice = lazy(loadPractice),
   Lessons = lazy(loadLessons),
   Progress = lazy(loadProgress),
-  Settings = lazy(loadSettings);
+  Settings = lazy(loadSettings),
+  Warmups = lazy(loadWarmups);
 
 // The theme chosen in Preferências applies before the first render.
 applyTheme();
@@ -68,6 +72,7 @@ applyTheme();
 const nav: readonly (readonly [View, string, typeof LayoutDashboard])[] = [
   ['home', 'Hoje', LayoutDashboard],
   ['library', 'Repertório', LibraryBig],
+  ['warmups', 'Aquecimento', Flame],
   ['practice', 'Praticar', AudioLines],
   ['lessons', 'Aulas', Headphones],
   ['progress', 'Evolução', ChartNoAxesCombined],
@@ -654,7 +659,7 @@ function Shell() {
   const pieceInfo = useLiveQuery(async () => {
     if (!route.pieceId) return null;
     const piece = await db.pieces.get(route.pieceId);
-    return { id: route.pieceId, exists: !!piece, title: piece?.title };
+    return { id: route.pieceId, exists: !!piece, title: piece?.title, warmup: isWarmup(piece) };
   }, [route.pieceId]);
   const lessonInfo = useLiveQuery(async () => {
     if (!route.lessonId) return null;
@@ -670,7 +675,19 @@ function Shell() {
     return { target, exists: !!found };
   }, [target]);
   useEffect(() => {
-    if (!pieceInfo || pieceInfo.exists || routeRef.current.pieceId !== pieceInfo.id) return;
+    const current = routeRef.current;
+    if (!pieceInfo || current.pieceId !== pieceInfo.id) return;
+    if (current.view === 'warmups') {
+      if (pieceInfo.exists && pieceInfo.warmup) return;
+      commit({ view: 'warmups' }, 'replace');
+      notify('Esta coleção não está mais no seu aquecimento.', 'info');
+      return;
+    }
+    if (pieceInfo.exists && pieceInfo.warmup) {
+      commit({ view: 'warmups', pieceId: pieceInfo.id }, 'replace');
+      return;
+    }
+    if (pieceInfo.exists) return;
     commit({ view: 'library' }, 'replace');
     notify('Esta peça não está mais no seu repertório.', 'info');
   }, [pieceInfo, commit, notify]);
@@ -706,7 +723,14 @@ function Shell() {
   useEffect(() => {
     // Warm up the other screens once the first one is shown, so the first tap on them opens at once.
     const timer = window.setTimeout(() => {
-      for (const load of [loadPractice, loadPieceDetail, loadLessons, loadProgress, loadSettings])
+      for (const load of [
+        loadPractice,
+        loadPieceDetail,
+        loadWarmups,
+        loadLessons,
+        loadProgress,
+        loadSettings,
+      ])
         void load().catch(() => {});
     }, 3000);
     return () => window.clearTimeout(timer);
@@ -741,6 +765,14 @@ function Shell() {
     (id: string) => {
       if (routeRef.current.view === 'practice')
         commit({ view: 'practice', target: id || undefined }, 'replace');
+    },
+    [commit],
+  );
+  const selectWarmup = useCallback(
+    (collectionId?: string, exerciseId?: string) => {
+      // Choosing a collection or a scale changes the address without adding a history entry.
+      if (routeRef.current.view === 'warmups')
+        commit({ view: 'warmups', pieceId: collectionId, exerciseId }, 'replace');
     },
     [commit],
   );
@@ -905,6 +937,15 @@ function Shell() {
               ) : (
                 <Library onOpen={openPiece} notify={notify} />
               ))}
+            {route.view === 'warmups' && (
+              <Warmups
+                collectionId={route.pieceId}
+                exerciseId={route.exerciseId}
+                onSelect={selectWarmup}
+                onPractice={practice}
+                notify={notify}
+              />
+            )}
             {route.view === 'practice' && (
               <Practice selectedId={route.target ?? ''} onSelect={selectPractice} notify={notify} />
             )}

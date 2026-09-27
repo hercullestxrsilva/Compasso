@@ -90,6 +90,14 @@ export async function removePiece(id: string) {
     },
   );
 }
+/** Deletes a trecho (or warm-up exercise) with its saved configurations; tasks keep existing unlinked. */
+export async function removeSegment(id: string) {
+  await db.transaction('rw', [db.segments, db.presets, db.tasks], async () => {
+    await db.segments.delete(id);
+    await db.presets.where('segmentId').equals(id).delete();
+    await db.tasks.where('segmentId').equals(id).modify({ segmentId: undefined });
+  });
+}
 export async function storeAsset(file: File) {
   if (file.size > 100 * 1024 * 1024) throw new Error('Escolha um arquivo de até 100 MB.');
   const asset: Asset = {

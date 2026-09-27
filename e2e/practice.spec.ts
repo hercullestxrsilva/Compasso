@@ -50,10 +50,11 @@ test('marks a trecho, practises it with the metronome and finds the session in E
 
   await page.getByRole('button', { name: 'Iniciar prática' }).click();
   await expect(page.getByText('Em prática', { exact: true })).toBeVisible();
-  // Past 6 s, above the 5 s a session needs to be kept, and well before the end: then stop it.
+  // Past 6 s, above the 5 s a session needs to be kept, and well before the end: then stop it. The session
+  // runs on the audio clock, which lags behind the wall clock when many browsers share the machine.
   const progress = page.getByRole('progressbar', { name: 'Progresso da sessão' });
   await expect
-    .poll(async () => Number(await progress.getAttribute('aria-valuenow')), { timeout: 20_000 })
+    .poll(async () => Number(await progress.getAttribute('aria-valuenow')), { timeout: 40_000 })
     .toBeGreaterThanOrEqual(30);
   await page.getByRole('button', { name: 'Encerrar', exact: true }).click();
 
@@ -96,10 +97,10 @@ test('leaving the screen during a timer-only practice saves the session first', 
   await cycle.getByRole('button', { name: 'Aplicar' }).click();
 
   await page.getByRole('button', { name: 'Iniciar prática' }).click();
-  // 6 s in: enough to be kept (5 s), with time left to leave in the middle of the session.
+  // 6 s in: enough to be kept (5 s), with time left to leave in the middle of the session (audio clock: see above).
   const progress = page.getByRole('progressbar', { name: 'Progresso da sessão' });
   await expect
-    .poll(async () => Number(await progress.getAttribute('aria-valuenow')), { timeout: 20_000 })
+    .poll(async () => Number(await progress.getAttribute('aria-valuenow')), { timeout: 40_000 })
     .toBeGreaterThanOrEqual(30);
 
   // Evolução is another screen: the app asks, ends the practice, and moves on once it has been rated.
