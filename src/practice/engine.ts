@@ -5,6 +5,7 @@ import {
   positionAt,
   resumePlan,
   retimeAt,
+  shiftConfig,
   type Round,
 } from './timeline';
 import type { PracticeConfig } from '../domain';
@@ -39,6 +40,10 @@ export class PracticeEngine {
   private prerollSeconds = 0;
   /** Practice seconds discarded by seeking backwards (restarting a repetition); they were really played. */
   private credit = 0;
+  /** Count-in asked for by a seek while paused, played by the next start(). */
+  private pendingPreroll = 0;
+  /** Bumped by pause() and each start(), so a start still waiting for the audio knows it was cancelled. */
+  private generation = 0;
   config: PracticeConfig;
   rounds: Round[];
   running = false;
@@ -90,12 +95,15 @@ export class PracticeEngine {
   }
   async start({ prerollBars = 0 }: { prerollBars?: number } = {}) {
     if (this.running) return;
+    const generation = ++this.generation;
     if (!this.silent) {
       if (!this.context) {
         this.context = new AudioContext();
         this.ownsContext = true;
       }
       await this.context.resume();
+      // Paused, ended or destroyed while the audio was waking up (this can take long on iPad): stay stopped.
+      if (generation !== this.generation || !this.context) return;
       if (this.context.state !== 'running')
         throw new Error('Toque em iniciar novamente para ativar o áudio.');
       this.listen();
@@ -106,7 +114,8 @@ export class PracticeEngine {
       }
     }
     this.running = true;
-    this.anchor(this.offset, prerollBars);
+    this.anchor(this.offset, Math.max(prerollBars, this.pendingPreroll));
+    this.pendingPreroll = 0;
     this.timer = setInterval(() => this.tick(), 25);
   }
   /** Continues after a pause; by default re-enters with a count-in (see resumePlan). */
@@ -127,16 +136,21 @@ export class PracticeEngine {
     if (this.running) this.anchor(target, prerollBars);
     else {
       this.offset = target;
+      this.pendingPreroll = prerollBars;
       this.onUpdate(target, false);
     }
   }
-  /** Changes the tempo by `delta` BPM between repetitions (see retimeAt). Returns false when not possible. */
+  /**
+   * Changes the tempo by `delta` BPM between repetitions (see retimeAt). Returns false when not possible.
+   * `config` follows, so the saved session records the tempo the student settled on.
+   */
   retime(delta: number) {
     const from = this.elapsed;
     const plan = retimeAt(this.rounds, this.config, from, delta);
     if (!plan) return false;
     this.credit += Math.max(0, activeSeconds(this.rounds, from) - activeSeconds(plan.rounds, plan.elapsed));
     this.rounds = plan.rounds;
+    this.config = shiftConfig(this.config, delta);
     if (this.running) this.anchor(plan.elapsed, 0);
     else {
       this.offset = plan.elapsed;
@@ -259,6 +273,7 @@ export class PracticeEngine {
     this.nodes.clear();
   }
   pause() {
+    this.generation++;
     this.offset = this.elapsed;
     this.running = false;
     this.prerollSeconds = 0;

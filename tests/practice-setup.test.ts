@@ -8,9 +8,11 @@ import {
   parseTarget,
   plural,
   rememberedConfig,
+  sameConfig,
   segmentConfig,
   settleNumber,
   tapTempo,
+  withMetronome,
 } from '../src/practice/setup';
 import {
   fitToDuration,
@@ -47,6 +49,24 @@ const piece = (id: string, title: string, status: Piece['status']): Piece => ({
 });
 
 describe('practice setup', () => {
+  it('switches to the timer and back without losing a bar-based cycle', () => {
+    const bars = { ...defaultConfig, mode: 'bars' as const, bars: 8 };
+    const timer = withMetronome(bars, false);
+    expect(timer.metronome).toBe(false);
+    const back = withMetronome(timer, true);
+    expect(back).toEqual(bars);
+    expect(back.mode).toBe('bars');
+    expect(back.bars).toBe(8);
+    expect('metronome' in back).toBe(false);
+  });
+  it('compares remembered cycles by value', () => {
+    const a = rememberedConfig(defaultConfig);
+    const reordered = Object.fromEntries(Object.entries(a).reverse());
+    expect(sameConfig(a, reordered)).toBe(true);
+    expect(sameConfig(a, { ...a, bars: 2 })).toBe(false);
+    expect(sameConfig(a, { ...a, metronome: false })).toBe(false);
+    expect(sameConfig(a, undefined)).toBe(false);
+  });
   it('reads what the selector points at', () => {
     expect(parseTarget('')).toEqual({ kind: 'free' });
     expect(parseTarget('piece:abc')).toEqual({ kind: 'piece', id: 'abc' });

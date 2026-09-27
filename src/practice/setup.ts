@@ -38,6 +38,18 @@ export function rememberedConfig(c: PracticeConfig): Partial<PracticeConfig> {
   return rest;
 }
 
+/** Same values, whatever the key order (so an unchanged cycle is not written again). */
+export function sameConfig(a: Partial<PracticeConfig> = {}, b: Partial<PracticeConfig> = {}) {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)] as (keyof PracticeConfig)[]);
+  return [...keys].every(key => a[key] === b[key]);
+}
+
+/** Switches between metronome and timer only, keeping the rest of the cycle (bars come back with the clicks). */
+export function withMetronome(c: PracticeConfig, on: boolean): PracticeConfig {
+  const { metronome: _metronome, ...rest } = c;
+  return on ? rest : { ...rest, metronome: false };
+}
+
 const clampBpm = (bpm: number) => Math.min(300, Math.max(20, Math.round(bpm) || defaultConfig.bpm));
 
 /** A segment's cycle: its remembered settings (or the defaults, sized to its measures) at its own BPM. */

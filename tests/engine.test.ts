@@ -179,6 +179,25 @@ describe('restarting and resuming', () => {
     expect(after[0].time).toBeCloseTo(5.08, 1);
     await engine.destroy();
   });
+  it('restarts a paused repetition with a count-in, even when continuing exactly where it stopped', async () => {
+    setup();
+    const engine = new PracticeEngine({ ...config, countInBars: 0 }, () => {});
+    await engine.start();
+    advance(1.5);
+    engine.pause();
+    engine.restartRound();
+    expect(engine.elapsed).toBe(0);
+    await engine.resume(false);
+    expect(engine.preroll?.beatsPerBar).toBe(4);
+    advance(1.5);
+    // One bar at 120 BPM (2 s) of count-in before the repetition starts again.
+    expect(engine.elapsed).toBe(0);
+    advance(1);
+    expect(engine.elapsed).toBeGreaterThan(0);
+    const after = heard().filter(c => c.time > 1.5);
+    expect(after[0].frequency).toBe(1500);
+    await engine.destroy();
+  });
   it('resumes exactly where it stopped when asked to', async () => {
     setup();
     const engine = new PracticeEngine(config, () => {});
@@ -236,6 +255,31 @@ describe('engine lifecycle', () => {
     expect(ctx.listeners).toHaveLength(0);
     expect(ctx.state).toBe('closed');
   });
+  it('stays stopped when paused or ended while the audio is still waking up', async () => {
+    setup();
+    let updates = 0;
+    const engine = new PracticeEngine(defaultConfig, () => updates++);
+    await engine.start();
+    engine.pause();
+    const ctx = contexts[0];
+    let wake = () => {};
+    ctx.resume = () => new Promise<void>(resolve => (wake = resolve));
+    const resuming = engine.resume(false);
+    engine.pause();
+    wake();
+    await resuming;
+    const before = updates;
+    advance(1);
+    expect(engine.running).toBe(false);
+    expect(updates).toBe(before);
+    // The same when the engine is destroyed meanwhile.
+    const again = engine.resume(false);
+    const destroyed = engine.destroy();
+    wake();
+    await again;
+    await destroyed;
+    expect(engine.running).toBe(false);
+  });
   it('does not close a shared audio context', async () => {
     setup();
     const shared = new FakeAudio() as unknown as AudioContext;
@@ -273,6 +317,8 @@ describe('engine lifecycle', () => {
     advance(3); // first repetition lasts 2 s, now resting
     expect(engine.retime(-60)).toBe(true);
     expect(engine.rounds.map(r => r.bpm)).toEqual([120, 60]);
+    // The saved session records the tempo the student settled on.
+    expect(engine.config.bpm).toBe(60);
     advance(8);
     const second = heard().filter(c => c.time > 4);
     expect(second.map(c => Number((c.time - second[0].time).toFixed(2)))).toEqual([0, 1, 2, 3]);

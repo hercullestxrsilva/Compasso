@@ -21,11 +21,15 @@ export function beatsPerBar(c: PracticeConfig) {
 export function countInBars(c: PracticeConfig) {
   return c.metronome === false ? 0 : c.countInBars;
 }
+/** A timer always counts seconds; its `mode` is kept for when the metronome is switched back on. */
+export function countsBars(c: PracticeConfig) {
+  return c.mode === 'bars' && c.metronome !== false;
+}
 function makeRound(c: PracticeConfig, index: number, bpm: number, start: number): Round {
   const beatSeconds = 60 / bpm,
     beats = beatsPerBar(c);
   const practiceStart = start + countInBars(c) * beats * beatSeconds;
-  const practiceEnd = practiceStart + (c.mode === 'bars' ? c.bars * beats * beatSeconds : c.seconds);
+  const practiceEnd = practiceStart + (countsBars(c) ? c.bars * beats * beatSeconds : c.seconds);
   const end = practiceEnd + (index < c.repetitions - 1 ? c.restSeconds : 0);
   return { index, bpm, start, practiceStart, practiceEnd, end, beatSeconds, beatsPerBar: beats };
 }
@@ -102,7 +106,7 @@ export function resumePlan(
     r = p.round;
   if (p.phase === 'rest' || p.phase === 'complete') return null;
   if (p.phase === 'preparation') return { seekTo: r.start, prerollBars: 0 };
-  if (c.mode === 'bars') return { seekTo: r.start, prerollBars: countInBars(c) ? 0 : 1 };
+  if (countsBars(c)) return { seekTo: r.start, prerollBars: countInBars(c) ? 0 : 1 };
   // Long repetitions by time: restart the interrupted bar with one bar of count-in.
   const bar = r.beatsPerBar * r.beatSeconds;
   return {
@@ -110,12 +114,21 @@ export function resumePlan(
     prerollBars: 1,
   };
 }
+const clampBpm = (bpm: number) => Math.min(300, Math.max(20, bpm));
+/** The cycle after a ± tempo change: its tempo, and a ramp's limit, moved by `delta` BPM. */
+export function shiftConfig(c: PracticeConfig, delta: number): PracticeConfig {
+  return {
+    ...c,
+    bpm: clampBpm(c.bpm + delta),
+    ...(c.increaseEvery > 0 ? { targetBpm: clampBpm(c.targetBpm + delta) } : {}),
+  };
+}
 /** Rebuilds the repetitions from `fromIndex` on with `delta` BPM, keeping the earlier ones untouched. */
 export function shiftTempo(rounds: Round[], c: PracticeConfig, fromIndex: number, delta: number): Round[] {
   let start = rounds[fromIndex]?.start ?? 0;
   return rounds.map(r => {
     if (r.index < fromIndex) return r;
-    const round = makeRound(c, r.index, Math.min(300, Math.max(20, r.bpm + delta)), start);
+    const round = makeRound(c, r.index, clampBpm(r.bpm + delta), start);
     start = round.end;
     return round;
   });
@@ -133,7 +146,6 @@ export function retimeAt(rounds: Round[], c: PracticeConfig, elapsed: number, de
   let at = elapsed;
   if (p.phase === 'preparation') at = next[index].start;
   else if (p.phase === 'practice')
-    at =
-      c.mode === 'bars' ? next[index].start : next[index].practiceStart + (elapsed - p.round.practiceStart);
+    at = countsBars(c) ? next[index].start : next[index].practiceStart + (elapsed - p.round.practiceStart);
   return { rounds: next, elapsed: at };
 }

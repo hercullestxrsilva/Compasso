@@ -10,6 +10,7 @@ import {
   positionAt,
   resumePlan,
   retimeAt,
+  shiftConfig,
   shiftTempo,
 } from '../src/practice/timeline';
 describe('musical practice timeline', () => {
@@ -77,6 +78,12 @@ describe('musical practice timeline', () => {
     expect(r[0].practiceStart).toBe(0);
     expect(r[0].practiceEnd).toBe(30);
   });
+  it('times a timer in seconds even when its cycle counts bars', () => {
+    const c = { ...defaultConfig, metronome: false, mode: 'bars' as const, bars: 8, seconds: 90 };
+    const r = buildTimeline(c);
+    expect(r[0].practiceEnd - r[0].practiceStart).toBe(90);
+    expect(resumePlan(r, c, 30)).toBeNull();
+  });
 });
 describe('resuming, restarting and changing tempo', () => {
   it('resumes a bar-based repetition from its count-in', () => {
@@ -103,6 +110,24 @@ describe('resuming, restarting and changing tempo', () => {
     expect(next[1].practiceEnd - next[1].practiceStart).toBeCloseTo(24);
     expect(next[2].start).toBeCloseTo(next[1].end);
     expect(shiftTempo(r, c, 0, -100)[0].bpm).toBe(20);
+  });
+  it('records the tempo change in the cycle, moving a ramp with it', () => {
+    expect(shiftConfig(defaultConfig, -10).bpm).toBe(50);
+    expect(shiftConfig(defaultConfig, -10).targetBpm).toBe(defaultConfig.targetBpm);
+    const ramp = {
+      ...defaultConfig,
+      bpm: 60,
+      increaseEvery: 1,
+      increaseBpm: 5,
+      targetBpm: 80,
+      repetitions: 6,
+    };
+    const shifted = shiftConfig(ramp, 10);
+    expect([shifted.bpm, shifted.targetBpm]).toEqual([70, 90]);
+    expect(buildTimeline(shifted).map(r => r.bpm)).toEqual(
+      shiftTempo(buildTimeline(ramp), ramp, 0, 10).map(r => r.bpm),
+    );
+    expect(shiftConfig({ ...defaultConfig, bpm: 295 }, 10).bpm).toBe(300);
   });
   it('retimes between repetitions and restarts a paused bar-based repetition', () => {
     const r = buildTimeline(defaultConfig);
