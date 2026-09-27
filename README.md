@@ -51,7 +51,13 @@ Para usar no iPad, disponibilize o servidor em um domínio **HTTPS com certifica
 
 O layout foi inspecionado em tamanhos de tela de tablet; Apple Pencil, áudio, gravação, instalação e interrupções ainda precisam de teste no iPad físico. Mantenha a tela ativa durante a prática. O aplicativo pausa o metrônomo ao perder visibilidade; o sistema pode suspender áudio e microfone em segundo plano.
 
-Dados locais não são sincronizados automaticamente. A persistência solicitada ao navegador reduz o risco de descarte, mas não substitui backup. Capturas interrompidas precisam ser recuperadas em Aulas antes da exportação.
+Dados locais não são sincronizados automaticamente. A persistência solicitada ao navegador reduz o risco de descarte, mas não substitui backup.
+
+## Backup
+
+**Preferências e dados → Exportar backup** gera um `.zip` com `manifest.json` (peças, trechos, marcações, sessões, aulas, notas, tarefas e rotinas) e a pasta `assets/` com as partituras e os áudios originais, sem conversão. O arquivo é montado aos poucos, sem carregar o acervo inteiro na memória. O limite é de 4 GB por backup (ZIP sem zip64); o navegador precisa de espaço livre parecido com o tamanho do acervo e a tela avisa quando ele parece insuficiente. Gravações interrompidas que ainda não foram recuperadas não entram no backup.
+
+A restauração aceita o `.zip` e os `.json` de versões anteriores (até 180 MB). Antes de mexer em qualquer dado, ela confere o índice, a presença, o tamanho e a soma de verificação de cada arquivo e as ligações entre registros, e mostra um resumo para você confirmar. Tudo é gravado em uma única transação: se algo falhar, nada muda. A tela mostra quando foi o último backup deste navegador e avisa quando passa de 7 dias ou há arquivos novos desde então.
 
 ## Ativar IA opcional
 
@@ -70,13 +76,13 @@ Limites iniciais: áudio de até 24 MB por transcrição, texto até 100.000 car
 
 ## Backups privados na nuvem, opcionais
 
-1. Use um projeto Supabase seu e aplique `supabase/migrations/001_private_backups.sql` uma vez.
+1. Use um projeto Supabase seu e aplique uma vez `supabase/migrations/001_private_backups.sql` e depois `002_zip_backups.sql` (quem já usa a nuvem aplica só a 002).
 2. Crie o usuário no Supabase Auth; o aplicativo possui entrada para conta existente, sem fluxo de cadastro/recuperação de senha nesta versão.
 3. Configure `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` antes do build. São configurações públicas; nunca use uma chave `service_role` no navegador.
 4. Para autenticar a API de IA, configure também `SUPABASE_URL`, `SUPABASE_ANON_KEY` e `ALLOW_LOCAL_AI=false` no servidor.
 5. Refaça `npm run build`, reinicie e entre em **Preferências e dados**.
 
-O SQL cria tabela e bucket privados com regras por usuário. Cada envio cria uma cópia manual imutável. A tela lista as cinco cópias mais recentes. Restaurar substitui os dados locais; não existe mesclagem automática entre aparelhos. O backup na nuvem aceita até 45 MB. A exportação local aceita até 120 MB de mídia bruta, com limite de 180 MB para o arquivo de restauração.
+O SQL cria tabela e bucket privados com regras por usuário. Cada envio cria uma cópia manual imutável, no mesmo `.zip` da exportação local. A tela lista as cinco cópias mais recentes; as antigas em `.json` continuam restauráveis. Restaurar substitui os dados locais; não existe mesclagem automática entre aparelhos. Cada cópia na nuvem aceita até 45 MB, limite igual no bucket, na tabela e na tela; para acervos maiores use a exportação local.
 
 A integração está implementada, mas não foi testada contra um projeto real. Antes de disponibilizar para terceiros, valide as regras com dois usuários diferentes e configure limites financeiros no provedor de IA.
 
