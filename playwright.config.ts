@@ -15,7 +15,9 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: 0,
   timeout: 60_000,
-  expect: { timeout: 10_000 },
+  // The dev server compiles each screen on its first request: with many workers starting at once, the first
+  // screens can take longer than usual to appear.
+  expect: { timeout: 15_000 },
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL,

@@ -1,0 +1,202 @@
+/* The study clock: in the sidebar (and its icon rail on iPad) and in the phone header. Both sit on --nav-bg. */
+.study-clock {
+  color: var(--nav-ink-strong);
+}
+.study-start,
+.study-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 40px;
+  border: 1px solid var(--nav-line);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--nav-ink-strong);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.study-action.stop {
+  color: var(--brand-cream);
+}
+.study-time {
+  display: grid;
+  gap: 2px;
+}
+.study-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--nav-muted);
+}
+.study-time strong {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-2xl);
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--brand-cream);
+}
+.study-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand-accent);
+  animation: study-pulse 1.6s ease-in-out infinite;
+}
+.study-dot.paused {
+  animation: none;
+  background: var(--nav-muted);
+}
+.study-clock.paused .study-time strong {
+  color: var(--nav-ink);
+}
+.study-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* Sidebar: a small card under the menu. */
+.study-clock--sidebar {
+  margin-top: var(--space-5);
+}
+.study-clock--sidebar .study-start {
+  width: 100%;
+}
+.study-clock--sidebar.active {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--brand-accent) 55%, var(--nav-line));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--brand-accent) 8%, transparent);
+}
+.study-clock--sidebar .study-action {
+  flex: 1 1 0;
+  min-width: 0;
+  gap: var(--space-1);
+  padding: 0 var(--space-1);
+  font-size: var(--fs-xs);
+}
+/* Short screens: while a session runs, the card takes the place of the quote. */
+@media (max-height: 860px) {
+  .sidebar:has(.study-clock.active) .sidebar-note {
+    display: none;
+  }
+}
+
+/* Phone header: shown only on phones (below). */
+.study-clock--compact {
+  display: none;
+}
+
+@media (hover: hover) {
+  .study-start:hover,
+  .study-action:hover {
+    background: var(--nav-hover);
+  }
+}
+@media (pointer: coarse) {
+  .study-start,
+  .study-action {
+    min-height: 44px;
+  }
+}
+
+/* iPad and narrow windows: the sidebar is a 92px rail of icons. */
+@media (min-width: 701px) and (max-width: 1180px),
+  (min-width: 701px) and (max-width: 1366px) and (pointer: coarse) {
+  .study-clock--sidebar {
+    margin-top: var(--space-4);
+  }
+  .study-clock--sidebar .study-start {
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--space-2) 0;
+    font-size: var(--fs-micro);
+    white-space: normal;
+  }
+  .study-clock--sidebar.active {
+    padding: var(--space-2) var(--space-1);
+    justify-items: center;
+    gap: var(--space-2);
+  }
+  /* Only the dot: the time and the buttons say the rest (their names stay for screen readers). */
+  .study-clock--sidebar .study-label {
+    font-size: 0;
+    gap: 0;
+  }
+  .study-clock--sidebar .study-time {
+    justify-items: center;
+  }
+  .study-clock--sidebar .study-time strong {
+    font-size: var(--fs-sm);
+  }
+  .study-clock--sidebar .study-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+  .study-clock--sidebar .study-action {
+    width: 100%;
+  }
+  .study-clock--sidebar .study-action-text {
+    display: none;
+  }
+}
+
+@media (max-width: 700px) {
+  .study-clock--compact {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-left: auto;
+    margin-right: var(--space-2);
+  }
+  .study-clock--compact .study-start-text,
+  .study-clock--compact .study-label,
+  .study-clock--compact .study-action-text {
+    display: none;
+  }
+  .study-clock--compact .study-start,
+  .study-clock--compact .study-action {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    border-color: transparent;
+  }
+  .study-clock--compact .study-time {
+    padding-left: var(--space-2);
+  }
+  .study-clock--compact .study-time strong {
+    font-size: var(--fs-md);
+  }
+}
+
+.study-summary {
+  margin: 0 0 var(--space-3);
+}
+.study-warning {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-weight: 600;
+}
+.study-discard {
+  margin-right: auto;
+  color: var(--danger-ink);
+}
+@keyframes study-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .study-dot {
+    animation: none;
+  }
+}

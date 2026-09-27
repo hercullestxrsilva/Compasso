@@ -27,6 +27,7 @@ import {
   Info,
 } from 'lucide-react';
 import BrandSymbol from './components/BrandSymbol';
+import StudyClock from './components/StudyClock';
 import Dashboard from './components/Dashboard';
 import { Library, PieceForm } from './components/Library';
 import { ConfirmProvider, Modal, useTopModal, type Notify, type NotifyTone } from './components/common';
@@ -801,6 +802,8 @@ function Shell() {
   );
 
   const onSettings = route.view === 'settings';
+  // The piece (or warm-up collection) on screen is the natural subject of a study session ended there.
+  const studyPieceId = route.view === 'library' || route.view === 'warmups' ? route.pieceId : undefined;
   const errors = toasts.filter(t => t.tone === 'error'),
     notes = toasts.filter(t => t.tone !== 'error');
   return (
@@ -823,6 +826,7 @@ function Shell() {
             compasso<span className="brand-dot">.</span>
           </span>
         </button>
+        <StudyClock variant="compact" currentPieceId={studyPieceId} notify={notify} />
         <button
           ref={menuButton}
           className="icon-btn"
@@ -873,6 +877,7 @@ function Shell() {
             </button>
           ))}
         </nav>
+        <StudyClock variant="sidebar" currentPieceId={studyPieceId} notify={notify} />
         <div className="sidebar-bottom">
           <figure className="sidebar-note">
             <blockquote>

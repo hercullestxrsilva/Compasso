@@ -43,6 +43,10 @@ Em **Evolução → Minhas gravações**, acompanhe o nível do microfone durant
 
 Rotinas permitem organizar passos com trechos e minutos, inclusive A–B–A; os passos avançam sozinhos, com uma contagem curta entre eles. A camada “Professor” é uma classificação feita por você; ainda não existe uma conta colaborativa de professor.
 
+## Relógio de estudo
+
+Na barra lateral (no celular, no cabeçalho), **Iniciar estudo** liga um relógio que vale para o app inteiro: ele continua contando entre as telas, pode ser pausado e sobrevive a recarregar a página. Em **Encerrar**, registre o tempo, a peça estudada (a peça aberta é sugerida) e uma anotação; a sessão aparece em Evolução e soma no tempo de Hoje. O tempo que o Praticar já registrou durante o relógio é descontado, para não contar duas vezes.
+
 ## Aquecimento
 
 Em **Aquecimento**, importe PDFs de escalas ou de estudos (Czerny, Hanon…). Cada arquivo vira uma coleção, e cada escala ou estudo, um exercício com o mesmo metrônomo, histórico, revisão e gráfico de andamento dos trechos.
