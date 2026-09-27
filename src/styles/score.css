@@ -1,0 +1,719 @@
+/*
+ * Score viewer and piece detail. styles.css is loaded after component styles, so rules that change
+ * existing classes are scoped under .score-viewer / .piece-detail to take precedence.
+ */
+.score-viewer {
+  container: score / inline-size;
+  position: relative;
+  min-width: 0;
+}
+
+/* Toolbar: one row of tools, page navigation and the "Mais" menu. */
+.score-toolbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  background: #fcfefe;
+}
+.score-toolset,
+.score-toolbar-end {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.score-toolbar-end {
+  margin-left: auto;
+}
+.score-tool {
+  min-width: 40px;
+  height: 40px;
+  padding: 0 6px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #3d575e;
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+.score-tool:hover:not(:disabled) {
+  background: #e6eff0;
+}
+.score-tool.active,
+.score-tool.active:hover {
+  background: var(--green);
+  color: #fff;
+  box-shadow: inset 0 -3px 0 var(--gold);
+}
+.score-tool.open {
+  background: #dfeced;
+}
+.score-tool-label {
+  display: none;
+}
+.score-viewer .score-pager {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.score-viewer .score-pager > span {
+  min-width: 96px;
+  text-align: center;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.score-viewer .score-pager-top {
+  display: none;
+  margin-right: 6px;
+}
+.score-viewer .score-pager > .score-pager-short {
+  min-width: 48px;
+}
+.score-history {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+}
+@container score (min-width: 620px) {
+  .score-tool {
+    min-width: 52px;
+    height: 48px;
+  }
+  .score-tool-label {
+    display: block;
+  }
+  /* Page turns stay reachable by touch even when the bottom bar is below the fold. */
+  .score-viewer .score-pager-top {
+    display: flex;
+  }
+}
+
+/* "Mais" popover */
+.score-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 8px;
+  z-index: 20;
+  width: min(330px, calc(100% - 16px));
+  max-height: min(70dvh, 520px);
+  overflow: auto;
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  box-shadow: 0 14px 40px #102b3b33;
+  color: var(--ink);
+}
+.score-menu-item,
+.score-menu-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink);
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+.score-menu-item:hover:not(:disabled),
+.score-menu-check:hover {
+  background: #eef4f5;
+}
+.score-menu-check input {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  margin: 0;
+  accent-color: var(--green);
+}
+.score-menu-check small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+.score-menu-group {
+  margin: 0;
+  padding: 4px 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.score-menu-group legend {
+  padding: 8px 10px 2px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.score-menu-hint {
+  margin: 0;
+  padding: 8px 10px 4px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+.layer-dot {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--dot);
+}
+
+/* Context row: shown only for annotation tools, region marking and a focused trecho. */
+.score-subbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-height: 48px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--line);
+  background: #f4f8f8;
+  color: var(--ink);
+  font-size: 0.8rem;
+}
+.score-subgroup {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 8px;
+  border-right: 1px solid var(--line);
+}
+.score-hint {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.score-hint.strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+.score-subbar .btn[aria-pressed='true'] {
+  border-color: var(--green);
+  background: var(--green);
+  color: #fff;
+}
+.score-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #8a5a14;
+  font-size: 0.78rem;
+}
+.score-viewer .score-subbar .link-btn {
+  min-height: 36px;
+  font-size: 0.8rem;
+}
+.score-layer-select {
+  height: 38px;
+  padding: 0 8px;
+  border: 1px solid #cbd9dc;
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 0.82rem;
+}
+.score-swatches {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.score-swatch {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--swatch);
+  box-shadow: 0 0 0 1px #b9cacd;
+  cursor: pointer;
+}
+/* Larger hit area than the visible dot. */
+.score-swatch::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+}
+.score-swatch[aria-pressed='true'],
+.score-swatch-custom[data-active='true'] {
+  box-shadow:
+    0 0 0 2px var(--ink),
+    0 0 0 4px #fff;
+}
+.score-swatch-custom {
+  display: grid;
+  place-items: center;
+  background: conic-gradient(#c0392b, #e0a100, #087e8b, #1f5fbf, #c0392b);
+  color: #fff;
+}
+.score-swatch-custom[data-active='true'] {
+  background: var(--swatch);
+}
+.score-swatch-custom input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.score-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #efdcb6;
+  background: #fdf6e8;
+  color: #5b4213;
+  font-size: 0.82rem;
+}
+.score-notice p {
+  flex: 1 1 260px;
+  margin: 0;
+}
+
+/* Score area */
+.score-viewer .score-scroll {
+  position: relative;
+  touch-action: pan-x pan-y;
+  scrollbar-gutter: stable;
+}
+/* Outside full screen a swipe that reaches the end of the page keeps scrolling to the trechos below. */
+.score-viewer.is-fullscreen .score-scroll {
+  overscroll-behavior: contain;
+}
+.score-viewer .annotation-selected {
+  filter: drop-shadow(0 0 3px #0e7f89aa);
+}
+.segment-mark {
+  pointer-events: none;
+}
+.segment-mark.interactive {
+  pointer-events: all;
+  cursor: pointer;
+  outline: none;
+}
+.segment-mark-box {
+  fill: #e8b469;
+  fill-opacity: 0.07;
+  stroke: #b27622;
+  stroke-opacity: 0.7;
+}
+.segment-mark.interactive:hover .segment-mark-box {
+  fill-opacity: 0.16;
+}
+/* The trecho opened with "Ver" or being practised. */
+.segment-mark.is-target .segment-mark-box {
+  fill: #e9af58;
+  fill-opacity: 0.12;
+  stroke: #bd8023;
+  stroke-opacity: 1;
+}
+.segment-mark:focus-visible .segment-mark-box {
+  stroke: #0e7f89;
+  stroke-opacity: 1;
+  stroke-dasharray: none;
+  fill-opacity: 0.16;
+}
+.segment-mark-label {
+  fill: #7a4f12;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-linejoin: round;
+}
+
+/* Bottom bar: pages, fit and zoom (and the practice transport in full screen). */
+.score-viewer .score-bottom {
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding: 6px 10px;
+}
+.score-zoom {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.score-fit {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid #cbd9dc;
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 0.76rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.score-fit.active {
+  border-color: var(--green);
+  background: #e3f1ee;
+  color: #0f5a5d;
+}
+.score-zoom-value {
+  min-width: 44px;
+  text-align: center;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+@container score (max-width: 560px) {
+  .score-fit span {
+    display: none;
+  }
+}
+.score-overlay-slot {
+  flex: 1 1 auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 0;
+}
+@container score (max-width: 720px) {
+  .score-overlay-slot {
+    order: -1;
+    flex-basis: 100%;
+  }
+}
+
+/* Full screen keeps every bar in the flow, so nothing covers the music. */
+.score-viewer.is-fullscreen .score-toolbar,
+.score-viewer.is-fullscreen .score-subbar,
+.score-viewer.is-fullscreen .score-notice {
+  flex-shrink: 0;
+}
+.score-viewer.is-fullscreen .score-toolbar {
+  padding-top: max(6px, env(safe-area-inset-top));
+  padding-left: max(8px, env(safe-area-inset-left));
+  padding-right: max(8px, env(safe-area-inset-right));
+}
+.score-viewer.is-fullscreen .score-bottom {
+  padding-bottom: max(6px, env(safe-area-inset-bottom));
+  padding-left: max(10px, env(safe-area-inset-left));
+  padding-right: max(10px, env(safe-area-inset-right));
+  background: #fff;
+}
+
+.score-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (pointer: coarse) {
+  .score-tool {
+    min-width: 44px;
+    height: 44px;
+  }
+  .score-viewer .icon-btn,
+  .score-fit,
+  .score-layer-select {
+    min-width: 44px;
+    height: 44px;
+  }
+  .score-swatch {
+    width: 32px;
+    height: 32px;
+  }
+}
+@container score (min-width: 620px) {
+  @media (pointer: coarse) {
+    .score-tool {
+      min-width: 56px;
+      height: 52px;
+    }
+  }
+}
+
+/* Piece detail: a compact header so the score starts higher on the screen. */
+.piece-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-bottom: 16px;
+}
+.piece-detail .piece-header .back-link {
+  margin: 0;
+  min-height: 44px;
+}
+.piece-header-main {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.piece-header-main h1 {
+  margin: 0;
+  font-size: 1.75rem;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+.piece-header-main p {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.piece-detail .score-card > .score-card-heading {
+  padding: 8px 12px;
+}
+/* On a portrait tablet the score gets the full width; trechos, notes and tasks follow below it. */
+@media (max-width: 1100px) {
+  .piece-detail .study-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.score-version {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--green);
+}
+.score-version h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.score-version select {
+  min-width: 0;
+  max-width: 100%;
+  height: 38px;
+  padding: 0 8px;
+  border: 1px solid #cbd9dc;
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 0.85rem;
+}
+.score-version .score-versions-button {
+  flex-shrink: 0;
+}
+.piece-detail .score-import-big {
+  min-height: 52px;
+  padding: 12px 20px;
+  font-size: 0.95rem;
+}
+
+/* Segment cards and the action sheet opened from the score. */
+.piece-detail .segment-card.rated-difficult {
+  border-left: 4px solid #b5523b;
+}
+.piece-detail .segment-card.rated-improving {
+  border-left: 4px solid #c3922b;
+}
+.piece-detail .segment-card.rated-comfortable {
+  border-left: 4px solid #2f8a63;
+}
+.segment-history {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f4f8f8;
+  color: #3d565c;
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+.segment-history p {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 0;
+}
+.segment-history.unpracticed {
+  color: var(--muted);
+}
+.segment-history blockquote {
+  margin: 6px 0 2px;
+  padding-left: 8px;
+  border-left: 2px solid #bfd3d6;
+  color: var(--ink);
+  font-style: italic;
+  white-space: pre-wrap;
+}
+.rating-chip {
+  padding: 1px 7px;
+  border-radius: 99px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+.rating-chip.difficult {
+  background: #f7e3dd;
+  color: #8e3a26;
+}
+.rating-chip.improving {
+  background: #f6ecd6;
+  color: #7a5a14;
+}
+.rating-chip.comfortable {
+  background: #dff0e6;
+  color: #1f6a47;
+}
+.piece-detail .segment-delete {
+  margin-left: auto;
+}
+.segment-sheet .segment-sheet-meta {
+  margin: -8px 0 10px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.segment-sheet .segment-goal {
+  margin: 0 0 12px;
+}
+.segment-sheet-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+@media (max-width: 480px) {
+  .segment-sheet-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Score versions */
+.version-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.version-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 56px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.version-list li.current {
+  border-color: #9cc7c4;
+  background: #f3f9f8;
+}
+.version-info {
+  flex: 1;
+  min-width: 0;
+}
+.version-info strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+}
+.version-info small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.version-rename {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+}
+.version-rename input {
+  flex: 1 1 200px;
+  min-width: 0;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid #cbd9dc;
+  border-radius: 8px;
+}
+
+/* Tasks linked to a trecho */
+.task-form {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.task-form select {
+  height: 38px;
+  padding: 0 8px;
+  border: 1px solid #cbd9dc;
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 0.8rem;
+}
+.piece-detail .task-row > div small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+@media (pointer: coarse) {
+  .score-viewer .btn.small,
+  .piece-detail .btn.small,
+  .score-viewer .link-btn,
+  .score-viewer .score-subbar .link-btn,
+  .piece-detail .link-btn,
+  .piece-detail select,
+  .piece-detail .inline-form input,
+  .score-version select,
+  .task-form select,
+  .version-rename input {
+    min-height: 44px;
+  }
+  .piece-detail .icon-btn,
+  .version-list .icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+  /* The box stays small; the invisible area around it takes the tap. */
+  .piece-detail .check-button {
+    position: relative;
+  }
+  .piece-detail .check-button::before {
+    content: '';
+    position: absolute;
+    inset: -11px;
+  }
+}
