@@ -1,0 +1,196 @@
+/* Preferências e dados: backup status, progress and restore summary. */
+.settings-grid,
+.restore-summary {
+  --settings-radius: calc(var(--radius) - 6px);
+  --settings-amber: color-mix(in srgb, var(--gold) 48%, black);
+}
+.backup-status {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 15px;
+  border-radius: var(--settings-radius);
+  border-left: 3px solid var(--green);
+  background: color-mix(in srgb, var(--green) 8%, var(--paper));
+  color: var(--green);
+  margin: 14px 0;
+  line-height: 1.5;
+}
+.backup-status > svg {
+  flex: none;
+  margin-top: 2px;
+}
+.backup-status strong {
+  display: block;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.backup-status small {
+  display: block;
+  color: var(--ink);
+  font-size: 0.8rem;
+}
+.backup-status.stale {
+  border-left-color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 16%, var(--paper));
+  color: var(--settings-amber);
+}
+
+.backup-progress {
+  margin: 4px 0 14px;
+}
+.backup-progress-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.82rem;
+  color: var(--ink);
+  margin-bottom: 7px;
+  font-variant-numeric: tabular-nums;
+}
+.backup-progress-bar {
+  height: 8px;
+  background: var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.backup-progress-bar > span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--green);
+  border-radius: 999px;
+  transition: width 0.2s;
+}
+.backup-progress-bar.indeterminate > span {
+  width: 35%;
+  animation: backup-progress-slide 1.3s ease-in-out infinite;
+}
+@keyframes backup-progress-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(290%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .backup-progress-bar.indeterminate > span {
+    width: 100%;
+    opacity: 0.45;
+    animation: none;
+  }
+}
+
+.settings-grid .backup-captures {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  color: var(--settings-amber);
+  font-size: 0.82rem;
+}
+.backup-captures > svg {
+  flex: none;
+  margin-top: 3px;
+}
+.file-button.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Announced by screen readers, not shown. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.restore-summary:focus,
+.confirm-focus:focus,
+.export-first-done:focus {
+  outline: none;
+}
+.restore-summary p {
+  margin: 0 0 12px;
+}
+.restore-counts {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+}
+.restore-counts li {
+  border: 1px solid var(--line);
+  border-radius: var(--settings-radius);
+  padding: 9px 12px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.restore-counts strong {
+  display: block;
+  color: var(--ink);
+  font-size: 1.3rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.restore-summary .restore-note {
+  padding-left: 11px;
+  border-left: 3px solid var(--gold);
+  color: var(--ink);
+  font-size: 0.85rem;
+}
+/* Colours come from .error-box; only the layout differs. */
+.restore-summary .restore-warning {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 0 0 12px;
+  font-size: 0.87rem;
+}
+.restore-warning > svg {
+  flex: none;
+  margin-top: 2px;
+}
+.export-first {
+  margin-bottom: 6px;
+}
+.export-first .error-box {
+  margin: 10px 0 0;
+}
+.export-first .backup-progress {
+  margin: 12px 0 0;
+}
+.export-first .btn[aria-disabled='true'] {
+  opacity: 0.6;
+  cursor: progress;
+}
+.restore-summary .export-first-done {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  color: var(--green);
+  font-size: 0.87rem;
+}
+.restore-summary .export-first-done.pending {
+  color: var(--ink);
+}
+.export-first-done > svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+@media (pointer: coarse) {
+  .settings-grid .btn,
+  .restore-summary .btn {
+    min-height: 44px;
+  }
+}

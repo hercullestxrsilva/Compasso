@@ -76,7 +76,7 @@ Os exemplos de QA ficam apenas no banco do navegador usado para desenvolvimento 
 6. Pausar e continuar mantém a posição do metrônomo sem uma nova contagem de preparação. A seleção do PDF é visual e manual, sem entendimento das notas.
 7. Uma seleção criada pela interface é um retângulo em uma página. Seleção contínua entre sistemas/páginas e andamento diferente por subtrecho ainda não existem.
 8. A exportação de PDF usa fonte Helvetica padrão: caracteres sem suporte podem virar `?`. PDFs com rotações incomuns, CropBox deslocado, senha, grande volume ou formulários precisam de uma bateria específica de testes. As camadas são achatadas no PDF exportado; o original local continua preservado.
-9. Limites de tamanho são explícitos na interface. O backup JSON/base64 usa memória proporcional ao acervo e não é adequado a bibliotecas muito grandes. Evoluir para ZIP/streaming e objetos individuais na nuvem.
+9. Limites de tamanho são explícitos na interface. O backup é um `.zip` com as mídias originais (até 4 GB, sem zip64), verificado por CRC e restaurado em uma única transação; cada cópia na nuvem aceita até 45 MB. No Safari o `.zip` pode ficar inteiro na memória durante a exportação: acervos grandes precisam de teste no iPad. A nuvem ainda guarda cópias inteiras, não objetos individuais.
 10. Rotinas não avançam automaticamente. Revisões têm datas manuais, sem algoritmo adaptativo ou notificações em segundo plano.
 11. A recuperação de senha/cadastro, gestão de cotas por usuário, orçamento persistente de IA, processamento longo com fila e limpeza programada de backups não estão implementados. O serviço atual é voltado a uma instalação pessoal inicial.
 12. Dockerfile preparado, mas não executado. Não foi criado repositório remoto, CI externo ou deploy.
