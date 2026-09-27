@@ -164,12 +164,15 @@ export default function Lessons({
   selectedId?: string;
   onSelect?: (id: string) => void;
 }) {
-  const lessons = useLiveQuery(() => db.lessons.orderBy('date').reverse().toArray()) ?? [];
+  const loaded = useLiveQuery(() => db.lessons.orderBy('date').reverse().toArray());
+  const lessons = loaded ?? [];
   const [form, setForm] = useState(false),
     [localSelected, setLocalSelected] = useState('');
   const selected = selectedId ?? localSelected,
     select = onSelect ?? setLocalSelected;
   const lesson = lessons.find(l => l.id === selected);
+  // A lesson opened from the address or from Hoje: wait for it instead of flashing the list.
+  if (selected && !loaded) return null;
   return lesson ? (
     <LessonDetail key={lesson.id} lesson={lesson} onBack={() => select('')} notify={notify} />
   ) : (

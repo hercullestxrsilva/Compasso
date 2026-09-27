@@ -1,0 +1,343 @@
+/* App shell: skip link, top bar (activity mini-bar, backup status), loading placeholder, toasts, theme choice. */
+.app-shell {
+  --shell-amber: color-mix(in srgb, var(--gold) 48%, black);
+  --shell-rec: #c63f3f;
+}
+
+/* Announced by screen readers, not shown. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: fixed;
+  top: 10px;
+  left: 16px;
+  z-index: 200;
+  padding: 11px 16px;
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--green);
+  font-size: 0.9rem;
+  font-weight: 600;
+  box-shadow: 0 6px 24px #092a4033;
+  transform: translateY(-160%);
+}
+.skip-link:focus {
+  transform: none;
+}
+
+/* Programmatic focus after a screen change announces the heading; no ring on non-interactive text. */
+.main-content:focus,
+.main-content :is(h1, h2, h3)[tabindex='-1']:focus {
+  outline: none;
+}
+
+/* The sidebar item of Preferências shows its state like the main items. */
+.sidebar .settings-nav[aria-current='page'] {
+  background: #2b5358;
+  color: #fff;
+}
+
+.topbar {
+  height: auto;
+  min-height: 79px;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 8px 0;
+}
+.topbar-caption {
+  flex: none;
+}
+.topbar-status {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-left: auto;
+  letter-spacing: 0;
+}
+.topbar-status > * {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.topbar-status > button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+.topbar .backup-pill.stale,
+.topbar .capture-notice {
+  color: var(--shell-amber);
+  background: color-mix(in srgb, var(--gold) 16%, var(--paper));
+  font-weight: 600;
+}
+.offline-chip {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--muted) 14%, var(--paper));
+}
+.status-short {
+  display: none;
+}
+
+.activity-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 4px 4px 12px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--green) 30%, var(--paper));
+  background: color-mix(in srgb, var(--green) 9%, var(--paper));
+  color: var(--ink);
+  font-size: 0.8rem;
+  letter-spacing: 0;
+}
+.activity-bar.recording {
+  border-color: color-mix(in srgb, var(--shell-rec) 35%, var(--paper));
+  background: color-mix(in srgb, var(--shell-rec) 8%, var(--paper));
+}
+.activity-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  color: var(--green);
+}
+.rec-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--shell-rec);
+  animation: shell-rec-pulse 1.6s ease-in-out infinite;
+}
+@keyframes shell-rec-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+.activity-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.activity-text strong {
+  font-weight: 600;
+}
+.activity-detail {
+  font-variant-numeric: tabular-nums;
+}
+.activity-action {
+  flex: none;
+  min-height: 32px;
+  padding: 4px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.activity-action.stop {
+  color: var(--shell-rec);
+  border-color: color-mix(in srgb, var(--shell-rec) 40%, var(--paper));
+}
+
+.leave-message:focus {
+  outline: none;
+}
+.leave-message ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px;
+}
+.leave-message li {
+  padding: 10px 13px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--green) 8%, var(--paper));
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.leave-message li + li {
+  margin-top: 6px;
+}
+.leave-message p {
+  margin: 0;
+}
+
+/* Appears only if loading takes a moment, so quick screen changes do not flash it. */
+.view-loading {
+  min-height: 40vh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  opacity: 0;
+  animation: shell-fade-in 0.3s ease 0.25s forwards;
+}
+.view-loading svg {
+  color: var(--green);
+  animation: shell-breathe 1.8s ease-in-out infinite;
+}
+@keyframes shell-fade-in {
+  to {
+    opacity: 1;
+  }
+}
+@keyframes shell-breathe {
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.toast-stack {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  pointer-events: none;
+}
+.toast-stack .toast {
+  position: static;
+  transform: none;
+  pointer-events: auto;
+}
+
+.repertoire-row .repertoire-title {
+  display: block;
+  font-size: 0.87rem;
+  font-weight: 700;
+  line-height: 1.45;
+  margin-bottom: 4px;
+}
+
+.settings-captures {
+  margin-bottom: 20px;
+}
+.settings-captures:empty {
+  display: none;
+}
+
+.theme-choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border: 0;
+  padding: 0;
+  margin: 14px 0;
+  min-width: 0;
+}
+.theme-choice label {
+  position: relative;
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.theme-choice label.active {
+  border-color: var(--green);
+  background: color-mix(in srgb, var(--green) 10%, var(--paper));
+  color: var(--green);
+  font-weight: 600;
+}
+.theme-choice input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.theme-choice label:has(input:focus-visible) {
+  outline: 3px solid var(--gold);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rec-dot,
+  .view-loading svg {
+    animation: none;
+  }
+  .view-loading {
+    animation-duration: 0.01s;
+  }
+}
+
+@media (pointer: coarse) {
+  .topbar-status > button,
+  .activity-action {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 700px) {
+  .topbar {
+    min-height: 50px;
+    gap: 6px 10px;
+  }
+  .topbar-status > * {
+    padding: 6px 9px;
+  }
+  .status-long {
+    display: none;
+  }
+  .status-short {
+    display: inline;
+  }
+  /* With the mini-bar on a phone, the status keeps only its icons (their names stay for screen readers). */
+  .topbar:has(.activity-bar) .topbar-status .status-short,
+  .topbar:has(.activity-bar) .topbar-status .status-arrow {
+    display: none;
+  }
+  .topbar:has(.activity-bar) .topbar-status > * {
+    min-width: 44px;
+    justify-content: center;
+    padding: 6px;
+  }
+  .activity-bar {
+    padding-left: 10px;
+    font-size: 0.76rem;
+  }
+  .repertoire-row .repertoire-title {
+    font-size: 0.83rem;
+  }
+  .toast-stack {
+    bottom: calc(14px + env(safe-area-inset-bottom));
+  }
+}
