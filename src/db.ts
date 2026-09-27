@@ -12,6 +12,7 @@ import type {
   Task,
   Recording,
   Routine,
+  Capture,
 } from './domain';
 class PianoDB extends Dexie {
   pieces!: Table<Piece>;
@@ -26,7 +27,7 @@ class PianoDB extends Dexie {
   tasks!: Table<Task>;
   recordings!: Table<Recording>;
   routines!: Table<Routine>;
-  captures!: Table<{ id: string; title: string; mime: string; createdAt: string }>;
+  captures!: Table<Capture>;
   captureChunks!: Table<{ id: string; captureId: string; index: number; blob: Blob }>;
   constructor() {
     super('compasso-piano');

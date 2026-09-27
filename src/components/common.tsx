@@ -1,44 +1,127 @@
-import { useEffect, useRef } from 'react';
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { X, Music2 } from 'lucide-react';
+
+export type NotifyTone = 'success' | 'error' | 'info';
+/** Shows a toast. Use tone 'error' for failures so they are not styled as a success. */
+export type Notify = (text: string, tone?: NotifyTone) => void;
+
 export function Modal({
   title,
   onClose,
   children,
   wide = false,
+  guard = false,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
   wide?: boolean;
+  /** When true (forms with typed input), a click on the backdrop does not close the dialog; Esc and the X still do. */
+  guard?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
   useEffect(() => {
     const d = ref.current!;
+    const previous = document.activeElement as HTMLElement | null;
     d.showModal();
-    return () => d.close();
+    // showModal focuses the first focusable element (the close button); prefer an explicit autofocus target.
+    d.querySelector<HTMLElement>('[autofocus],[data-autofocus]')?.focus();
+    return () => {
+      d.close();
+      if (previous?.isConnected) previous.focus();
+    };
   }, []);
   return (
     <dialog
       ref={ref}
       className={`modal ${wide ? 'wide' : ''}`}
-      onCancel={onClose}
+      aria-labelledby={titleId}
+      onCancel={e => {
+        e.preventDefault();
+        onClose();
+      }}
       onClick={e => {
-        if (e.target === e.currentTarget) {
-          const r = e.currentTarget.getBoundingClientRect();
-          if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)
-            onClose();
-        }
+        if (guard || e.target !== e.currentTarget) return;
+        const r = e.currentTarget.getBoundingClientRect();
+        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) onClose();
       }}
     >
       <header>
-        <h2>{title}</h2>
-        <button className="icon-btn" aria-label="Fechar" onClick={onClose}>
+        <h2 id={titleId}>{title}</h2>
+        <button type="button" className="icon-btn" aria-label="Fechar" onClick={onClose}>
           <X size={22} />
         </button>
       </header>
       {children}
     </dialog>
+  );
+}
+
+export interface ConfirmOptions {
+  title: string;
+  message: ReactNode;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  /** Styles the confirm button as destructive. */
+  danger?: boolean;
+}
+type ConfirmFn = (options: ConfirmOptions) => Promise<boolean>;
+const ConfirmContext = createContext<ConfirmFn | null>(null);
+
+/** In-app replacement for window.confirm (which looks out of place on iPad). Mounted once in App. */
+export function ConfirmProvider({ children }: { children: ReactNode }) {
+  const [request, setRequest] = useState<(ConfirmOptions & { resolve: (ok: boolean) => void }) | null>(null);
+  const confirm = useCallback<ConfirmFn>(
+    options =>
+      new Promise<boolean>(resolve => {
+        setRequest(current => {
+          current?.resolve(false);
+          return { ...options, resolve };
+        });
+      }),
+    [],
+  );
+  const close = (ok: boolean) => {
+    request?.resolve(ok);
+    setRequest(null);
+  };
+  return (
+    <ConfirmContext.Provider value={confirm}>
+      {children}
+      {request && (
+        <Modal title={request.title} onClose={() => close(false)}>
+          <div className="confirm-message">{request.message}</div>
+          <footer className="modal-actions">
+            <button type="button" className="btn secondary" onClick={() => close(false)}>
+              {request.cancelLabel ?? 'Cancelar'}
+            </button>
+            <button
+              type="button"
+              data-autofocus
+              className={`btn ${request.danger ? 'danger' : ''}`}
+              onClick={() => close(true)}
+            >
+              {request.confirmLabel ?? 'Confirmar'}
+            </button>
+          </footer>
+        </Modal>
+      )}
+    </ConfirmContext.Provider>
+  );
+}
+
+/**
+ * Returns confirm(options) => Promise<boolean>, rendered as an app dialog.
+ * Falls back to window.confirm outside a ConfirmProvider.
+ */
+export function useConfirm(): ConfirmFn {
+  const confirm = useContext(ConfirmContext);
+  return (
+    confirm ??
+    (async (options: ConfirmOptions) =>
+      window.confirm(typeof options.message === 'string' ? options.message : options.title))
   );
 }
 export function Empty({ title, text, action }: { title: string; text: string; action?: ReactNode }) {

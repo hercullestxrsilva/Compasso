@@ -194,7 +194,7 @@ export default function Routines({
                           disabled={!s}
                           onClick={() => {
                             setOpen(false);
-                            onStart(item.segmentId, item.minutes);
+                            if (item.segmentId) onStart(item.segmentId, item.minutes);
                           }}
                         >
                           <Play size={14} />

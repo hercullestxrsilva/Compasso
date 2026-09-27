@@ -957,6 +957,17 @@ input[type='color'] {
 .toast .icon-btn {
   color: #fff;
 }
+.toast.error {
+  background: #7a1f1f;
+  border-color: #b85c5c;
+}
+.toast.info {
+  background: #2d4750;
+}
+.confirm-message {
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
 .file-button {
   position: relative;
   overflow: hidden;

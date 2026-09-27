@@ -68,6 +68,7 @@ const tablesSchema = z.object({
         rating,
         reviewDate: date,
         createdAt: date,
+        practiceConfig: configSchema.partial().optional(),
       }),
     )
     .max(20000),
@@ -88,6 +89,10 @@ const tablesSchema = z.object({
         rating,
         note: str,
         completed: z.boolean(),
+        kind: z.enum(['segment', 'piece', 'free']).optional(),
+        intention: str.optional(),
+        nextStep: str.optional(),
+        routineId: optionalId,
       }),
     )
     .max(100000),
@@ -134,14 +139,33 @@ const tablesSchema = z.object({
     )
     .max(100000),
   recordings: z
-    .array(z.object({ id, assetId: id, segmentId: optionalId, title: str, createdAt: date }))
+    .array(
+      z.object({
+        id,
+        assetId: id,
+        segmentId: optionalId,
+        title: str,
+        createdAt: date,
+        sessionId: optionalId,
+        bpm: z.number().min(20).max(300).optional(),
+        hand: hand.optional(),
+      }),
+    )
     .max(10000),
   routines: z
     .array(
       z.object({
         id,
         title: str,
-        items: z.array(z.object({ segmentId: id, minutes: z.number().positive().max(120) })),
+        items: z.array(
+          z.object({
+            segmentId: optionalId,
+            label: str.optional(),
+            minutes: z.number().positive().max(120),
+            hand: hand.optional(),
+            bpm: z.number().min(20).max(300).optional(),
+          }),
+        ),
       }),
     )
     .max(10000),

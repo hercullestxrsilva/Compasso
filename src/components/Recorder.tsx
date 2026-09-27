@@ -28,15 +28,20 @@ export async function clearCapture(id: string) {
     await db.captures.delete(id);
   });
 }
-export default function Recorder({
-  onFile,
-  label = 'Gravar aula',
-  onBusyChange,
-}: {
+export interface RecorderProps {
   onFile: (file: File) => Promise<void>;
   label?: string;
   onBusyChange?: (busy: boolean) => void;
-}) {
+  /** 'music' disables echo cancellation, noise suppression and auto gain (piano takes); 'voice' keeps them. */
+  profile?: 'music' | 'voice';
+  /** Stored with the capture so an interrupted recording can be recovered to the right place. */
+  origin?: { kind: 'lesson' | 'attempt'; lessonId?: string; segmentId?: string };
+  /** Asked before the microphone opens; return false to cancel (e.g. "replace this lesson's audio?"). */
+  beforeStart?: () => Promise<boolean>;
+  /** Called about every second while recording with the elapsed seconds. */
+  onElapsed?: (seconds: number) => void;
+}
+export default function Recorder({ onFile, label = 'Gravar aula', onBusyChange }: RecorderProps) {
   const recorder = useRef<MediaRecorder | null>(null),
     stream = useRef<MediaStream | null>(null),
     queue = useRef(Promise.resolve()),

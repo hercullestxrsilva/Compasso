@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   ChevronLeft,
@@ -22,22 +22,29 @@ import {
 } from 'lucide-react';
 import { db } from '../db';
 import { uid, now, type Score, type Annotation, type Point, type Region } from '../domain';
-import { Modal, Field, ErrorBox, download, errorText } from './common';
+import { Modal, Field, ErrorBox, download, errorText, type Notify } from './common';
 import { renderPdfPage } from '../pdf/render';
 import { movePoints } from '../annotations';
 type Tool = 'navigate' | 'select' | 'pen' | 'highlight' | 'text' | 'region' | 'erase';
 const layers = ['Minhas notas', 'Professor', 'Dedilhado'];
+export interface ScoreViewerProps {
+  score: Score;
+  onRegion: (region: Region) => void;
+  targetRegion?: Region;
+  notify: Notify;
+  /** Extra controls kept visible while the score is in full screen (e.g. the practice transport). */
+  fullscreenOverlay?: ReactNode;
+  /** Marked trechos drawn on the score; tapping one calls onSegmentClick. */
+  segments?: { id: string; title: string; regions: Region[] }[];
+  onSegmentClick?: (segmentId: string) => void;
+}
 export default function ScoreViewer({
   score,
   onRegion,
   targetRegion,
   notify,
-}: {
-  score: Score;
-  onRegion: (region: Region) => void;
-  targetRegion?: Region;
-  notify: (s: string) => void;
-}) {
+  fullscreenOverlay,
+}: ScoreViewerProps) {
   const asset = useLiveQuery(() => db.assets.get(score.assetId), [score.assetId]);
   const [page, setPage] = useState(1),
     [pages, setPages] = useState(1),
@@ -284,6 +291,7 @@ export default function ScoreViewer({
   );
   return (
     <div ref={viewer} className={`score-viewer ${fullscreen ? 'is-fullscreen' : ''}`}>
+      {fullscreen && fullscreenOverlay && <div className="score-fullscreen-overlay">{fullscreenOverlay}</div>}
       <div className="score-tools">
         <div className="tool-group">
           {(

@@ -67,6 +67,8 @@ export interface Segment {
   rating?: Rating;
   reviewDate: string;
   createdAt: string;
+  /** Last cycle settings used for this segment (meter, bars, ramp…), restored when it is selected again. */
+  practiceConfig?: Partial<PracticeConfig>;
 }
 export interface PracticeConfig {
   bpm: number;
@@ -85,6 +87,8 @@ export interface PracticeConfig {
   targetBpm: number;
   silentBars: number;
   audibleBars: number;
+  /** false = timer only, no clicks. Missing means true. */
+  metronome?: boolean;
 }
 export const defaultConfig: PracticeConfig = {
   bpm: 60,
@@ -124,6 +128,13 @@ export interface Session {
   rating?: Rating;
   note: string;
   completed: boolean;
+  /** What was practised. Missing on old sessions: infer 'segment' when segmentId is set, else 'free'. */
+  kind?: 'segment' | 'piece' | 'free';
+  /** Goal set before starting ("hoje quero…"). */
+  intention?: string;
+  /** Next step written after the session. */
+  nextStep?: string;
+  routineId?: string;
 }
 export interface Lesson {
   id: string;
@@ -161,11 +172,32 @@ export interface Recording {
   segmentId?: string;
   title: string;
   createdAt: string;
+  sessionId?: string;
+  bpm?: number;
+  hand?: Hand;
+}
+/** A routine step: a segment, or a free item (e.g. "Escalas") when segmentId is missing. */
+export interface RoutineItem {
+  segmentId?: string;
+  label?: string;
+  minutes: number;
+  hand?: Hand;
+  bpm?: number;
 }
 export interface Routine {
   id: string;
   title: string;
-  items: { segmentId: string; minutes: number }[];
+  items: RoutineItem[];
+}
+/** An in-progress or interrupted microphone capture, stored in chunks for recovery. */
+export interface Capture {
+  id: string;
+  title: string;
+  mime: string;
+  createdAt: string;
+  origin?: 'lesson' | 'attempt';
+  lessonId?: string;
+  segmentId?: string;
 }
 export const uid = () => crypto.randomUUID();
 export const now = () => new Date().toISOString();
@@ -198,4 +230,5 @@ export const configSchema = z.object({
   targetBpm: z.number().min(20).max(300),
   silentBars: z.number().int().min(0).max(8),
   audibleBars: z.number().int().min(1).max(16),
+  metronome: z.boolean().optional(),
 });
