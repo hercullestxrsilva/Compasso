@@ -236,3 +236,34 @@ test('a routine in full screen rates each step there and comes back to full scre
   await viewer.getByRole('button', { name: 'Começar passo 4' }).click();
   await expect(viewer.getByRole('button', { name: 'Pausar' })).toBeVisible();
 });
+
+test('a continuous cycle keeps the metronome going until it is ended', async ({ page }) => {
+  await page.goto('/#/praticar');
+  await expect(mainHeading(page)).toHaveText('Hora de praticar');
+  await page.getByRole('button', { name: 'Configurar ciclos' }).click();
+  const cycle = page.getByRole('dialog', { name: 'Seu ciclo de prática' });
+  await cycle.getByLabel('Duração por').selectOption('loop');
+  // Nothing to count: no bars, repetitions, rests or tempo ramp.
+  await expect(cycle.getByLabel(/^Repetições/)).toHaveCount(0);
+  await expect(cycle.getByLabel('Pausa entre repetições (s)')).toHaveCount(0);
+  await expect(cycle.getByText('PROGRESSÃO DE ANDAMENTO')).toHaveCount(0);
+  await expect(cycle.getByText('sem fim, encerre quando quiser')).toBeVisible();
+  await cycle.getByLabel('BPM inicial').fill('240');
+  await cycle.getByLabel('Compassos de preparação').fill('0');
+  await cycle.getByRole('button', { name: 'Aplicar' }).click();
+  await expect(page.getByText('Contínuo, sem fim')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Iniciar prática' }).click();
+  const readout = page.locator('.cycle-info').getByText('Contínuo').locator('..').locator('strong');
+  // The clock counts up (past the 5 s a session needs to be kept); there is no progress to an end.
+  await expect
+    .poll(async () => (await readout.innerText()).localeCompare('0:06'), { timeout: 40_000 })
+    .toBe(1);
+  await expect(page.getByRole('progressbar', { name: 'Progresso da sessão' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Recomeçar repetição' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Encerrar', exact: true }).click();
+  const review = page.getByRole('dialog', { name: 'Como foi a prática?' });
+  // Ending is how a continuous session completes.
+  await expect(review.getByText('A sessão já está salva.')).toBeVisible();
+});

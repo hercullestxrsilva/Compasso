@@ -14,6 +14,22 @@ import {
   shiftTempo,
 } from '../src/practice/timeline';
 describe('musical practice timeline', () => {
+  it('runs a continuous cycle as one open-ended round: count-in once, no repetitions or rests', () => {
+    const loop = { ...defaultConfig, loop: true, repetitions: 5, restSeconds: 10, increaseEvery: 1 };
+    expect(configSchema.safeParse(loop).success).toBe(true);
+    const r = buildTimeline(loop);
+    expect(r).toHaveLength(1);
+    expect(r[0].practiceStart).toBe(4); // one bar of 4/4 at 60 BPM
+    expect(r[0].bpm).toBe(60); // the tempo ramp needs repetitions
+    // Twenty minutes in it is still practising, bar by bar, and all of it counts as practice.
+    const p = positionAt(r, 4 + 20 * 60);
+    expect(p.phase).toBe('practice');
+    expect(p.bar).toBe(301);
+    expect(activeSeconds(r, 4 + 20 * 60)).toBe(1200);
+    expect(completedRounds(r, 4 + 20 * 60)).toBe(0);
+    // Continuing after a pause never rewinds the session: only to the start of the interrupted bar.
+    expect(resumePlan(r, loop, 4 + 20 * 60 + 2.5)).toEqual({ seekTo: 4 + 20 * 60, prerollBars: 1 });
+  });
   it('accounts for preparation on all rounds and no final rest', () => {
     const r = buildTimeline(defaultConfig);
     expect(r[0].practiceEnd - r[0].practiceStart).toBe(32);

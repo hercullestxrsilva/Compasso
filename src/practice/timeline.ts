@@ -25,15 +25,33 @@ export function countInBars(c: PracticeConfig) {
 export function countsBars(c: PracticeConfig) {
   return c.mode === 'bars' && c.metronome !== false;
 }
+/** A continuous session still needs an end for the timeline: long enough to never be reached in practice. */
+export const LOOP_SECONDS = 4 * 60 * 60;
+export const isLoop = (c: PracticeConfig) => c.loop === true;
 function makeRound(c: PracticeConfig, index: number, bpm: number, start: number): Round {
   const beatSeconds = 60 / bpm,
     beats = beatsPerBar(c);
   const practiceStart = start + countInBars(c) * beats * beatSeconds;
+  if (isLoop(c)) {
+    const practiceEnd = practiceStart + LOOP_SECONDS;
+    return {
+      index,
+      bpm,
+      start,
+      practiceStart,
+      practiceEnd,
+      end: practiceEnd,
+      beatSeconds,
+      beatsPerBar: beats,
+    };
+  }
   const practiceEnd = practiceStart + (countsBars(c) ? c.bars * beats * beatSeconds : c.seconds);
   const end = practiceEnd + (index < c.repetitions - 1 ? c.restSeconds : 0);
   return { index, bpm, start, practiceStart, practiceEnd, end, beatSeconds, beatsPerBar: beats };
 }
 export function buildTimeline(c: PracticeConfig): Round[] {
+  // Continuous: a single round at the starting tempo; repetitions, rests and the tempo ramp do not apply.
+  if (isLoop(c)) return [makeRound(c, 0, c.bpm, 0)];
   let start = 0;
   return Array.from({ length: c.repetitions }, (_, index) => {
     const bpm =
@@ -106,8 +124,8 @@ export function resumePlan(
     r = p.round;
   if (p.phase === 'rest' || p.phase === 'complete') return null;
   if (p.phase === 'preparation') return { seekTo: r.start, prerollBars: 0 };
-  if (countsBars(c)) return { seekTo: r.start, prerollBars: countInBars(c) ? 0 : 1 };
-  // Long repetitions by time: restart the interrupted bar with one bar of count-in.
+  if (countsBars(c) && !isLoop(c)) return { seekTo: r.start, prerollBars: countInBars(c) ? 0 : 1 };
+  // Long repetitions by time, and a continuous cycle: restart the interrupted bar with one bar of count-in.
   const bar = r.beatsPerBar * r.beatSeconds;
   return {
     seekTo: r.practiceStart + Math.floor((elapsed - r.practiceStart) / bar + 1e-7) * bar,

@@ -22,6 +22,7 @@ export default function CycleSettings({
   const set = <K extends keyof PracticeConfig>(key: K, value: PracticeConfig[K]) =>
     setDraft(c => ({ ...c, [key]: value }));
   const timer = draft.metronome === false;
+  const loop = draft.loop === true;
   const rounds = buildTimeline(draft),
     total = rounds.at(-1)!.end;
   return (
@@ -85,20 +86,34 @@ export default function CycleSettings({
         <fieldset>
           <legend className="eyebrow">DURAÇÃO</legend>
           <p className="hint">
-            {timer
-              ? 'Cada repetição é um bloco de tempo. Não há pausa depois da última.'
-              : 'Cada repetição começa com a preparação. Não há pausa depois da última.'}
+            {loop
+              ? timer
+                ? 'Contínuo: o cronômetro conta até você encerrar.'
+                : 'Contínuo: o metrônomo segue até você encerrar, sem repetições nem pausas. A preparação toca só no começo.'
+              : timer
+                ? 'Cada repetição é um bloco de tempo. Não há pausa depois da última.'
+                : 'Cada repetição começa com a preparação. Não há pausa depois da última.'}
           </p>
           <div className="form-grid three">
-            {!timer && (
-              <Field label="Duração por">
-                <select value={draft.mode} onChange={e => set('mode', e.target.value as 'bars' | 'seconds')}>
-                  <option value="bars">Compassos</option>
-                  <option value="seconds">Segundos</option>
-                </select>
-              </Field>
-            )}
-            {draft.mode === 'bars' && !timer ? (
+            <Field label="Duração por">
+              <select
+                value={loop ? 'loop' : timer ? 'seconds' : draft.mode}
+                onChange={e => {
+                  const value = e.target.value;
+                  // A timer always counts seconds: its bar/second choice stays for when the metronome returns.
+                  setDraft(c =>
+                    value === 'loop'
+                      ? { ...c, loop: true }
+                      : { ...c, loop: false, mode: timer ? c.mode : (value as 'bars' | 'seconds') },
+                  );
+                }}
+              >
+                {!timer && <option value="bars">Compassos</option>}
+                <option value="seconds">{timer ? 'Blocos de tempo' : 'Segundos'}</option>
+                <option value="loop">Contínuo (sem fim)</option>
+              </select>
+            </Field>
+            {loop ? null : draft.mode === 'bars' && !timer ? (
               <NumberField
                 label="Compassos por repetição"
                 value={draft.bars}
@@ -116,13 +131,15 @@ export default function CycleSettings({
                 onChange={v => set('seconds', v)}
               />
             )}
-            <NumberField
-              label="Repetições"
-              value={draft.repetitions}
-              min={1}
-              max={100}
-              onChange={v => set('repetitions', v)}
-            />
+            {!loop && (
+              <NumberField
+                label="Repetições"
+                value={draft.repetitions}
+                min={1}
+                max={100}
+                onChange={v => set('repetitions', v)}
+              />
+            )}
             {!timer && (
               <NumberField
                 label="Compassos de preparação"
@@ -133,17 +150,19 @@ export default function CycleSettings({
                 onChange={v => set('countInBars', v)}
               />
             )}
-            <NumberField
-              label="Pausa entre repetições (s)"
-              value={draft.restSeconds}
-              min={0}
-              max={300}
-              hint="Para respirar e soltar as mãos."
-              onChange={v => set('restSeconds', v)}
-            />
+            {!loop && (
+              <NumberField
+                label="Pausa entre repetições (s)"
+                value={draft.restSeconds}
+                min={0}
+                max={300}
+                hint="Para respirar e soltar as mãos."
+                onChange={v => set('restSeconds', v)}
+              />
+            )}
           </div>
         </fieldset>
-        {!timer && (
+        {!timer && !loop && (
           <fieldset>
             <legend className="eyebrow">PROGRESSÃO DE ANDAMENTO</legend>
             <label className="check-row">
@@ -246,7 +265,7 @@ export default function CycleSettings({
             <legend className="eyebrow">AO CONTINUAR DEPOIS DE PAUSAR</legend>
             <label className="check-row">
               <input type="checkbox" checked={resume} onChange={e => setResume(e.target.checked)} />
-              Recomeçar a repetição com contagem
+              {loop ? 'Retomar o compasso interrompido com contagem' : 'Recomeçar a repetição com contagem'}
             </label>
             <p className="hint">
               Vale para este dispositivo. Desmarque para seguir exatamente de onde parou.
@@ -257,8 +276,16 @@ export default function CycleSettings({
       <ErrorBox message={error} />
       <footer className="modal-actions cycle-footer">
         <p>
-          <strong>Previsão:</strong> {clock(total)} de sessão · {clock(activeSeconds(rounds, total))} de
-          prática
+          {loop ? (
+            <>
+              <strong>Contínuo:</strong> sem fim, encerre quando quiser
+            </>
+          ) : (
+            <>
+              <strong>Previsão:</strong> {clock(total)} de sessão · {clock(activeSeconds(rounds, total))} de
+              prática
+            </>
+          )}
         </p>
         <button type="button" className="btn secondary" onClick={onClose}>
           Cancelar

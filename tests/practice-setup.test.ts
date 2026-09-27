@@ -196,3 +196,17 @@ describe('routine steps', () => {
     expect(nextStepIndex(items, 2, [])).toBe(-1);
   });
 });
+
+describe('continuous cycle in a routine', () => {
+  it('plays without stopping for the length of the step', async () => {
+    const { fitToDuration } = await import('../src/practice/routine');
+    const step = fitToDuration({ ...defaultConfig, loop: true }, 180);
+    expect(step).toMatchObject({
+      loop: false,
+      mode: 'seconds',
+      seconds: 180,
+      repetitions: 1,
+      restSeconds: 0,
+    });
+  });
+});

@@ -238,7 +238,9 @@ export function CycleSummary({ config }: { config: PracticeConfig }) {
         <>
           <span>Só cronômetro</span>
           <span>
-            {plural(config.repetitions, 'bloco', 'blocos')} de {clock(config.seconds)}
+            {config.loop
+              ? 'Contínuo, sem fim'
+              : `${plural(config.repetitions, 'bloco', 'blocos')} de ${clock(config.seconds)}`}
           </span>
         </>
       ) : (
@@ -247,17 +249,16 @@ export function CycleSummary({ config }: { config: PracticeConfig }) {
             {config.numerator}/{config.denominator}
           </span>
           <span>
-            {config.mode === 'bars'
-              ? plural(config.bars, 'compasso', 'compassos')
-              : `${config.seconds} segundos`}{' '}
-            × {config.repetitions}
+            {config.loop
+              ? 'Contínuo, sem fim'
+              : `${config.mode === 'bars' ? plural(config.bars, 'compasso', 'compassos') : `${config.seconds} segundos`} × ${config.repetitions}`}
           </span>
           <span>
             {config.countInBars
               ? `${plural(config.countInBars, 'compasso', 'compassos')} de preparação`
               : 'Sem preparação'}
           </span>
-          {config.increaseEvery > 0 && (
+          {config.increaseEvery > 0 && !config.loop && (
             <span>
               +{config.increaseBpm} BPM a cada{' '}
               {config.increaseEvery === 1 ? 'repetição' : `${config.increaseEvery} repetições`}

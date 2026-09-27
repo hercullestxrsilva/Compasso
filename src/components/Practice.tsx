@@ -40,8 +40,10 @@ import {
 } from '../domain';
 import { PracticeEngine, type Preroll } from '../practice/engine';
 import {
+  activeSeconds,
   beatsPerBar,
   buildTimeline,
+  isLoop,
   isSilentBar,
   maxBpmReached,
   positionAt,
@@ -206,6 +208,8 @@ export default function Practice({
     total = rounds.at(-1)!.end,
     position = positionAt(rounds, elapsed);
   const timer = config.metronome === false;
+  // Continuous: no repetitions, rests or end — the clock counts up until the session is ended.
+  const loop = isLoop(config);
   const routineActive = run !== null;
   const busy = started || routineActive;
 
@@ -333,10 +337,12 @@ export default function Practice({
     return plan;
   };
 
-  const finish = async (complete: boolean, advance = false) => {
+  const finish = async (ended: boolean, advance = false) => {
     const e = engine.current,
       id = sessionId.current;
     if (!e || !id) return;
+    // A continuous cycle has no end of its own: ending it is how it completes.
+    const complete = ended || isLoop(e.config);
     e.pause();
     setElapsed(e.elapsed);
     setPreroll(null);
@@ -780,10 +786,13 @@ export default function Practice({
         segments.find(s => s.id === nextItem.segmentId),
       )
     : null;
+  const practiced = activeSeconds(rounds, elapsed);
   const activityLabel =
     started && current ? `Prática · ${current.title}` : run ? `Rotina · ${run.routine.title}` : '';
   const activityDetail = started
-    ? `${running ? '' : 'Pausada · '}Rep ${position.round.index + 1}/${rounds.length} · ${clock(total - elapsed)}`
+    ? loop
+      ? `${running ? '' : 'Pausada · '}Contínuo · ${clock(practiced)}`
+      : `${running ? '' : 'Pausada · '}Rep ${position.round.index + 1}/${rounds.length} · ${clock(total - elapsed)}`
     : run
       ? run.countdown !== null
         ? `Passo ${run.index + 1} começa em ${run.countdown} s`
@@ -929,9 +938,11 @@ export default function Practice({
         {phaseText}
         {countIn !== null && <b>{countIn}</b>}
       </span>
-      <span className="hud-stat">
-        <small>Rep</small> {repetitionShown}/{rounds.length}
-      </span>
+      {!loop && (
+        <span className="hud-stat">
+          <small>Rep</small> {repetitionShown}/{rounds.length}
+        </span>
+      )}
       {!timer && (
         <span className="hud-stat">
           {shownBpm} <small>BPM</small>
@@ -943,9 +954,9 @@ export default function Practice({
         ) : (
           <BeatDots count={beats} lit={litBeat} flashKey={flashKey} />
         ))}
-      <span className="hud-stat">{clock(started ? remaining : total)}</span>
+      <span className="hud-stat">{loop ? clock(practiced) : clock(started ? remaining : total)}</span>
       {playButton('hud-play')}
-      {started && !timer && (
+      {started && !timer && !loop && (
         <button
           className="btn secondary hud-btn"
           aria-label="Recomeçar repetição"
@@ -1093,8 +1104,16 @@ export default function Practice({
             </span>
             {timer ? (
               <div className="timer-readout">
-                <strong>{clock(started ? remaining : total)}</strong>
-                <span>{started ? (phaseKey === 'rest' ? 'de intervalo' : 'restantes') : 'no total'}</span>
+                <strong>{loop ? clock(practiced) : clock(started ? remaining : total)}</strong>
+                <span>
+                  {loop
+                    ? 'sem fim · encerre quando quiser'
+                    : started
+                      ? phaseKey === 'rest'
+                        ? 'de intervalo'
+                        : 'restantes'
+                      : 'no total'}
+                </span>
               </div>
             ) : (
               <div className="bpm-control">
@@ -1172,40 +1191,59 @@ export default function Practice({
                 )}
               </div>
             )}
-            <div className="cycle-info">
-              <div>
-                <span>Repetição</span>
-                <strong>
-                  {repetitionShown} <small>/ {rounds.length}</small>
-                </strong>
-              </div>
-              {!timer && config.mode === 'bars' && (
+            {loop ? (
+              <div className="cycle-info">
+                {!timer && (
+                  <div>
+                    <span>Compasso</span>
+                    <strong>
+                      {started && !preroll && position.phase === 'practice' ? position.bar : '—'}
+                    </strong>
+                  </div>
+                )}
                 <div>
-                  <span>Compasso</span>
-                  <strong>
-                    {started && !preroll && position.phase === 'practice' ? position.bar : '—'}{' '}
-                    <small>/ {config.bars}</small>
-                  </strong>
+                  <span>Contínuo</span>
+                  <strong>{clock(practiced)}</strong>
                 </div>
-              )}
-              <div>
-                <span>{timer ? 'Sessão' : remainingLabel}</span>
-                <strong>{clock(timer ? total - elapsed : started ? remaining : total)}</strong>
               </div>
-            </div>
-            <div
-              className="session-progress"
-              role="progressbar"
-              aria-label="Progresso da sessão"
-              aria-valuenow={Math.round(progress)}
-              aria-valuemin={0}
-              aria-valuemax={100}
-            >
-              <span style={{ width: `${progress}%` }} />
-            </div>
+            ) : (
+              <>
+                <div className="cycle-info">
+                  <div>
+                    <span>Repetição</span>
+                    <strong>
+                      {repetitionShown} <small>/ {rounds.length}</small>
+                    </strong>
+                  </div>
+                  {!timer && config.mode === 'bars' && (
+                    <div>
+                      <span>Compasso</span>
+                      <strong>
+                        {started && !preroll && position.phase === 'practice' ? position.bar : '—'}{' '}
+                        <small>/ {config.bars}</small>
+                      </strong>
+                    </div>
+                  )}
+                  <div>
+                    <span>{timer ? 'Sessão' : remainingLabel}</span>
+                    <strong>{clock(timer ? total - elapsed : started ? remaining : total)}</strong>
+                  </div>
+                </div>
+                <div
+                  className="session-progress"
+                  role="progressbar"
+                  aria-label="Progresso da sessão"
+                  aria-valuenow={Math.round(progress)}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                >
+                  <span style={{ width: `${progress}%` }} />
+                </div>
+              </>
+            )}
             <div className="transport">
               {playButton('play-btn')}
-              {started && !timer && (
+              {started && !timer && !loop && (
                 <button
                   className="btn secondary"
                   onClick={e => {

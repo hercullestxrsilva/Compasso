@@ -34,7 +34,7 @@ Abra http://127.0.0.1:5188/. Para a API opcional, rode `npm run server` em um se
 3. Use caneta, marca-texto ou texto; ao inserir texto, escolha o tamanho da fonte entre 10 e 100. As camadas separam suas notas, dedilhado e orientações do professor. Para reposicionar uma marcação, escolha **Selecionar e mover** e arraste o texto, traço de caneta ou marca-texto. Com um texto selecionado, use **Editar texto e tamanho** para alterá-lo.
    A navegação entre páginas aparece acima e abaixo da partitura. Use **Tela cheia** na barra superior para ampliar a leitura; o botão muda para **Sair da tela cheia**. No computador, Esc também fecha a visualização ampliada.
 4. Em **Marcar trecho**, arraste um retângulo sobre a passagem. Registre compassos, objetivo, mão, BPM e revisão.
-5. Abra **Praticar**, selecione o trecho e configure duração, repetições, preparação, pausas e progressão do andamento.
+5. Abra **Praticar**, selecione o trecho e configure duração, repetições, preparação, pausas e progressão do andamento. Em **Duração por → Contínuo (sem fim)**, o metrônomo segue sem contar compassos, repetições ou pausas até você encerrar.
 6. Ao terminar, registre como foi. Em **Evolução**, consulte sessões e trechos a revisar.
 7. Em **Aulas**, registre a aula, importe ou grave áudio e anote em momentos específicos. É possível escrever a transcrição manualmente.
 8. Exporte seu backup regularmente em **Preferências e dados**.

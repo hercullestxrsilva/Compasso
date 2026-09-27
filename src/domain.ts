@@ -99,6 +99,8 @@ export interface PracticeConfig {
   audibleBars: number;
   /** false = timer only, no clicks. Missing means true. */
   metronome?: boolean;
+  /** Continuous: one open-ended round (count-in once, no repetitions or rests) until the session is ended. */
+  loop?: boolean;
 }
 export const defaultConfig: PracticeConfig = {
   bpm: 60,
@@ -250,4 +252,5 @@ export const configSchema = z.object({
   silentBars: z.number().int().min(0).max(8),
   audibleBars: z.number().int().min(1).max(16),
   metronome: z.boolean().optional(),
+  loop: z.boolean().optional(),
 });

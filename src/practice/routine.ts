@@ -25,6 +25,16 @@ const clampSeconds = (s: number) => Math.min(3600, Math.max(5, Math.round(s)));
 /** Repeats a cycle as many times as fit in about `seconds` (at least once); a timer becomes one block. */
 export function fitToDuration(c: PracticeConfig, seconds: number): PracticeConfig {
   if (c.metronome === false) return { ...c, mode: 'seconds', seconds: clampSeconds(seconds), repetitions: 1 };
+  // A continuous cycle plays without stopping for the length of the step.
+  if (c.loop)
+    return {
+      ...c,
+      loop: false,
+      mode: 'seconds',
+      seconds: clampSeconds(seconds),
+      repetitions: 1,
+      restSeconds: 0,
+    };
   const one = buildTimeline({ ...c, repetitions: 1 })[0].end;
   const repetitions = Math.round((seconds + c.restSeconds) / (one + c.restSeconds));
   return { ...c, repetitions: Math.min(100, Math.max(1, repetitions)) };
