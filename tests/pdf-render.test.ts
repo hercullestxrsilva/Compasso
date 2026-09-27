@@ -31,6 +31,7 @@ function setup() {
   const page = {
     getViewport: ({ scale }: { scale: number }) => ({ width: 500 * scale, height: 650 * scale }),
     render: vi.fn(() => ({ promise: rendering.promise, cancel: vi.fn() })),
+    cleanup: vi.fn(() => true),
   };
   const getPage = vi.fn(async () => page);
   const destroy = vi.fn(async () => {});
@@ -67,6 +68,7 @@ describe('PDF rendering', () => {
     expect(await result).toEqual({ pages: 2, ratio: 1.3 });
     expect(s.drawImage).toHaveBeenCalledOnce();
     expect(s.canvas.width).toBe(960);
+    expect(s.page.cleanup).toHaveBeenCalledOnce();
     expect(s.destroy).toHaveBeenCalledOnce();
   });
   it('never publishes an obsolete render after zoom or page navigation', async () => {
@@ -104,16 +106,23 @@ function sharedSetup() {
   vi.stubGlobal('devicePixelRatio', 1);
   const renders: { page: number; scale: number; finish: () => void; cancel: ReturnType<typeof vi.fn> }[] = [];
   let autoFinish = true;
-  const getPage = vi.fn(async (page: number) => ({
-    getViewport: ({ scale }: { scale: number }) => ({ width: 500 * scale, height: 650 * scale }),
-    render: vi.fn(({ viewport }: { viewport: { width: number } }) => {
-      const done = deferred<void>();
-      const cancel = vi.fn();
-      renders.push({ page, scale: viewport.width / 500, finish: () => done.resolve(), cancel });
-      if (autoFinish) done.resolve();
-      return { promise: done.promise, cancel };
-    }),
-  }));
+  // PDF.js returns the same proxy for a page number every time.
+  const proxies = new Map<number, { cleanup: ReturnType<typeof vi.fn> }>();
+  const getPage = vi.fn(async (page: number) => {
+    const proxy = proxies.get(page) ?? {
+      getViewport: ({ scale }: { scale: number }) => ({ width: 500 * scale, height: 650 * scale }),
+      render: vi.fn(({ viewport }: { viewport: { width: number } }) => {
+        const done = deferred<void>();
+        const cancel = vi.fn();
+        renders.push({ page, scale: viewport.width / 500, finish: () => done.resolve(), cancel });
+        if (autoFinish) done.resolve();
+        return { promise: done.promise, cancel };
+      }),
+      cleanup: vi.fn(() => true),
+    };
+    proxies.set(page, proxy);
+    return proxy;
+  });
   const destroy = vi.fn(async () => {});
   mocks.getDocument.mockReturnValue({ promise: Promise.resolve({ numPages: 3, getPage }), destroy });
   return {
@@ -121,6 +130,7 @@ function sharedSetup() {
     drawImage,
     destroy,
     renders,
+    cleanups: (page: number) => proxies.get(page)?.cleanup.mock.calls.length ?? 0,
     manual: () => (autoFinish = false),
     renderer: new PdfRenderer(new Blob(['pdf'])),
   };
@@ -189,6 +199,39 @@ describe('PDF renderer reuse', () => {
     s.renders[1].finish();
     await next;
     expect(s.renders[1].scale).toBeCloseTo(2.4);
+  });
+
+  it('releases the decoded images of each page once it is drawn', async () => {
+    const s = sharedSetup();
+    s.manual();
+    const signal = new AbortController().signal;
+    const first = s.renderer.render({ canvas: s.canvas, page: 1, width: 600, zoom: 1, signal });
+    await vi.waitFor(() => expect(s.renders).toHaveLength(1));
+    expect(s.cleanups(1)).toBe(0);
+    s.renders[0].finish();
+    await first;
+    expect(s.cleanups(1)).toBe(1);
+
+    s.renderer.prefetch({ page: 2, width: 600, zoom: 1 });
+    await vi.waitFor(() => expect(s.renders).toHaveLength(2));
+    s.renders[1].finish();
+    await vi.waitFor(() => expect(s.cleanups(2)).toBe(1));
+
+    // A canceled render releases its page as well.
+    const controller = new AbortController();
+    const third = s.renderer.render({
+      canvas: s.canvas,
+      page: 3,
+      width: 600,
+      zoom: 1,
+      signal: controller.signal,
+    });
+    const rejected = expect(third).rejects.toMatchObject({ name: 'AbortError' });
+    await vi.waitFor(() => expect(s.renders).toHaveLength(3));
+    controller.abort();
+    s.renders[2].finish();
+    await rejected;
+    expect(s.cleanups(3)).toBe(1);
   });
 
   it('does not pre-render past the last page', async () => {

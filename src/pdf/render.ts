@@ -101,6 +101,9 @@ async function renderToBuffer(
     throw error;
   } finally {
     signal.removeEventListener('abort', cancel);
+    // The document stays open for the whole visit; without this every page shown keeps its decoded
+    // images (tens of MB for a scanned page). PDF.js defers it while another render of the page runs.
+    pdfPage.cleanup();
   }
 }
 
