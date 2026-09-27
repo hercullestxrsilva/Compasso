@@ -1,4 +1,19 @@
-# Estado da implementação · 26/09/2026
+# Estado da implementação · 27/09/2026
+
+## Versão 0.2
+
+Avaliação completa do app, auditoria de usabilidade/visual/acessibilidade (76 achados) e implementação revisada por agentes independentes. Resumo:
+
+- **Segurança e base:** PDF.js 6.3 (corrige GHSA-hq66-cqwq-w95j), Prettier, ESLint, repositório Git.
+- **Partitura:** anotações sem distorção (texto e traços iguais na tela e no PDF exportado), histórico único de desfazer/refazer (criar, apagar, mover, editar), PDF em cache com pré-renderização da próxima página, modo "Só Apple Pencil", viragem por teclado e pedal Bluetooth, ajuste à largura/página inteira, pinça, trechos visíveis e tocáveis na partitura, versões renomeáveis, barra de ferramentas em uma linha no iPad.
+- **Backup:** `.zip` com a mídia original, sem o teto de 120 MB, restauração verificada (CRC, tamanhos, referências) em uma transação, resumo antes de substituir e aviso de backup antigo.
+- **Prática:** tap tempo, volume, metrônomo desligável, painel legível à distância, recomeçar repetição e retomar com contagem, revisão espaçada a partir da avaliação, oferta de atualizar o BPM do trecho, configuração lembrada por trecho, rotinas que avançam sozinhas, peça inteira, gravação de tentativa ligada à sessão, transporte visível em tela cheia.
+- **Hoje/Evolução:** plano do dia, meta semanal, andamento por trecho em gráfico, comparação de duas tentativas, "Preparar próxima aula" por período.
+- **Aulas:** tempo das notas congelado ao começar a escrever, ±5 s, confirmação antes de substituir áudio, recuperação de gravações para a aula ou tentativa certa, edição de aula, perguntas da IA guardadas, correspondência de evidências tolerante no servidor.
+- **Navegação e visual:** endereços por tela (Voltar do Safari funciona), aviso antes de sair durante gravação/prática com mini-barra, sistema de tokens, tema escuro, contraste AA, alvos de toque de 44 px, layout do iPad em pé com a partitura ocupando ~80% da largura, telas carregadas sob demanda.
+- **Testes:** 224 unitários e 55 de ponta a ponta (computador e iPad com toque).
+
+Ainda não homologado em aparelho físico: iPad com Apple Pencil, microfone real, instalação na tela de início e Safari/WebKit (os testes automatizados usam Chrome). Vista de duas páginas lado a lado ficou para depois.
 
 ## Correção: PDF importado em branco
 

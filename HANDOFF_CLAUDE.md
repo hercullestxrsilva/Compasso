@@ -12,14 +12,16 @@ A consulta desta atualização mostrou 7% utilizados/93% disponíveis na cota se
 
 1. Trabalhar em `E:\APP Piano` no Windows/PowerShell. Ler `README.md`, `IMPLEMENTACAO.md` e `ARQUITETURA.md`.
 2. Preservar os dados locais do usuário e a separação entre acervos por origem. Não limpar IndexedDB/armazenamento para resolver um erro sem exportação e autorização adequada.
-3. `npm test` e `npm run build`. Último resultado: 34 testes aprovados e build aprovado, incluindo a correção de PDF digitalizado em branco, texto com tamanho ajustável, movimentação de anotações e ajustes de gravação no Firefox.
+3. `npm run check`, `npm run lint`, `npm test`, `npm run build` e `npm run test:e2e` (Chrome instalado). Último resultado (0.2, 27/09/2026): 224 testes unitários e 55 de ponta a ponta aprovados, build aprovado. O projeto está no GitHub (`hercullestxrsilva/Compasso`) e o código segue o Prettier do repositório.
 4. `npm start` abre servidor de produção em `http://127.0.0.1:4188/`. `npm run dev` usa 5188; `npm run server` fornece API em 8787. As portas podem estar ocupadas por processos deixados ao final da sessão; não terminar processos de outros projetos.
 5. `.env.example` descreve a configuração. Nenhuma chave real foi inserida no projeto. `.env` não deve ser exposto no frontend, no Git ou em logs.
 
 ## Decisões e código
 
 - React 19 + TypeScript + Vite; visual próprio “Compasso”, português, verde petróleo e fundo claro.
-- Dexie/IndexedDB versão 2; tipos/validações em `src/domain.ts`; alterações de esquema exigem migração.
+- Dexie/IndexedDB versão 2; tipos/validações em `src/domain.ts`; alterações de esquema exigem migração. Campos novos precisam entrar também no esquema zod de `src/backup.ts`, que descarta chaves desconhecidas.
+- Backup 0.2 é um `.zip` (`src/zip.ts` + fflate) lido pelo diretório central; restauração aceita também o JSON v1.
+- Rotas por hash em `src/router.ts`; `src/activity.ts` registra gravação/prática em andamento para o aviso antes de sair; `useConfirm` substitui `window.confirm`; tokens de cor e tema escuro em `src/styles.css` (`src/theme.ts`).
 - PDF.js carrega dinamicamente; `scripts/pdf-assets.mjs` copia os decodificadores, CMaps, fontes e perfis da versão instalada antes de dev/build. `src/pdf/render.ts` renderiza em canvas temporário e impede publicação após cancelamento. Isso corrigiu a página branca reproduzida com JPEG2000. SVG com coordenadas normalizadas mantém marcações em zoom/redimensionamento; `score-export.ts` exporta com pdf-lib.
 - `src/practice/timeline.ts` é função pura; `engine.ts` usa relógio Web Audio/lookahead e cancela sons na pausa. Não trocar a precisão sonora por um `setInterval` que toca diretamente a cada batida.
 - Aulas usam MediaRecorder, chunks locais e recuperação. `Recorder.tsx` e `Lessons.tsx` concentram esse caminho. O navegador integrado caiu ao tocar o WAV de teste; investigar primeiro em Safari/Chrome antes de atribuir a falha ao codec ou à aplicação.
