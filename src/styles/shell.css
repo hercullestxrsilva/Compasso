@@ -1,6 +1,5 @@
 /* App shell: skip link, top bar (activity mini-bar, backup status), loading placeholder, toasts, theme choice. */
 .app-shell {
-  --shell-amber: color-mix(in srgb, var(--gold) 48%, black);
   --shell-rec: #c63f3f;
 }
 
@@ -41,10 +40,10 @@
   outline: none;
 }
 
-/* The sidebar item of Preferências shows its state like the main items. */
+/* The sidebar item of Preferências shows its state like the main items, in both themes. */
 .sidebar .settings-nav[aria-current='page'] {
-  background: #2b5358;
-  color: #fff;
+  background: var(--nav-active);
+  color: var(--nav-ink-strong);
 }
 
 .topbar {
@@ -106,10 +105,11 @@ html:has(.topbar .activity-bar) {
   background: transparent;
   color: var(--muted);
 }
+/* Warning tokens: the data-loss prompts read at least 4.5:1 in both themes (also as icons alone). */
 .topbar .backup-pill.stale,
 .topbar .capture-notice {
-  color: var(--shell-amber);
-  background: color-mix(in srgb, var(--gold) 16%, var(--paper));
+  color: var(--warning);
+  background: var(--warning-soft);
   font-weight: 600;
 }
 .offline-chip {
@@ -180,7 +180,8 @@ html:has(.topbar .activity-bar) {
   font-weight: 600;
 }
 .activity-action.stop {
-  color: var(--shell-rec);
+  /* The recording red marks the dot and the edge; the text uses the danger ink, readable in both themes. */
+  color: var(--danger-ink);
   border-color: color-mix(in srgb, var(--shell-rec) 40%, var(--paper));
 }
 
