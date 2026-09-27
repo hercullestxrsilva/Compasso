@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Plus, Search, ArrowUpRight, MoreHorizontal, BookOpen, FileMusic, Trash2 } from 'lucide-react';
 import { db, removePiece, storeAsset } from '../db';
 import { matchesSearch, statuses, uid, now, type Piece, type PieceStatus, isWarmup } from '../domain';
+import { DOCUMENT_ACCEPT, prepareDocuments, usePasteFiles } from '../files';
 import { Modal, Field, Empty, ErrorBox, Badge, errorText, useConfirm, type Notify } from './common';
 import { forgetHistory } from '../annotation-history';
 import { forgetPieceView, titleFromFileName } from '../score-view';
@@ -32,9 +33,16 @@ export function PieceForm({
     [composer, setComposer] = useState(piece?.composer ?? '');
   const [status, setStatus] = useState<PieceStatus>(piece?.status ?? 'studying'),
     [tags, setTags] = useState(piece?.tags ?? '');
-  const [file, setFile] = useState<File>(),
+  const [files, setFiles] = useState<File[]>([]),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false);
+  const pick = (picked: File[]) => {
+    if (!picked.length) return;
+    setFiles(list => [...list, ...picked]);
+    if (!title) setTitle(titleFromFileName(picked[0].name));
+  };
+  // A screenshot of the score can be pasted straight into the form.
+  usePasteFiles(pick, { scope: 'dialog' });
   return (
     <Modal guard title={piece ? 'Editar peça' : 'Adicionar ao repertório'} onClose={onClose}>
       <form
@@ -44,9 +52,10 @@ export function PieceForm({
           setError('');
           try {
             const id = piece?.id ?? uid();
-            const scoreId = file ? uid() : undefined;
-            if (file && !['application/pdf', 'image/png', 'image/jpeg', 'image/webp'].includes(file.type))
-              throw new Error('Use uma partitura em PDF, PNG, JPG ou WebP.');
+            // Several screenshots chosen together become the pages of one score.
+            const docs = await prepareDocuments(files, title.trim() || 'Partitura');
+            const scoreIds = docs.map(() => uid());
+            const scoreId = scoreIds[0];
             await db.transaction('rw', [db.pieces, db.assets, db.scores], async () => {
               await db.pieces.put({
                 id,
@@ -57,13 +66,13 @@ export function PieceForm({
                 createdAt: piece?.createdAt ?? now(),
                 updatedAt: now(),
               });
-              if (file && scoreId) {
-                const asset = await storeAsset(file);
+              for (const [i, doc] of docs.entries()) {
+                const asset = await storeAsset(doc);
                 await db.scores.add({
-                  id: scoreId,
+                  id: scoreIds[i],
                   pieceId: id,
                   assetId: asset.id,
-                  title: titleFromFileName(file.name),
+                  title: titleFromFileName(doc.name),
                   createdAt: now(),
                 });
               }
@@ -117,17 +126,36 @@ export function PieceForm({
         </div>
         <Field
           label={piece ? 'Adicionar outra partitura (opcional)' : 'Partitura (opcional)'}
-          hint="PDF ou imagem, até 100 MB. O original é preservado."
+          hint="PDF, foto ou print, até 100 MB. Vários prints escolhidos juntos viram as páginas de uma só partitura. Você também pode colar um print com Ctrl+V."
         >
           <input
             type="file"
-            accept="application/pdf,image/png,image/jpeg,image/webp"
+            accept={DOCUMENT_ACCEPT}
+            multiple
             onChange={e => {
-              setFile(e.target.files?.[0]);
-              if (!title && e.target.files?.[0]) setTitle(titleFromFileName(e.target.files[0].name));
+              const picked = [...(e.target.files ?? [])];
+              e.target.value = '';
+              pick(picked);
             }}
           />
         </Field>
+        {files.length > 0 && (
+          <ul className="picked-files">
+            {files.map((f, i) => (
+              <li key={`${f.name}-${i}`}>
+                <span>{f.name}</span>
+                <button
+                  type="button"
+                  className="icon-btn subtle"
+                  aria-label={`Tirar ${f.name}`}
+                  onClick={() => setFiles(list => list.filter((_, j) => j !== i))}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <ErrorBox message={error} />
         <footer className="modal-actions">
           <button type="button" className="btn secondary" onClick={onClose}>

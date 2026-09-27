@@ -15,7 +15,7 @@ import {
   Pencil,
 } from 'lucide-react';
 import { db } from '../db';
-import { uid, now, localDay, formatDate, clock, type Lesson, type Note, type Task } from '../domain';
+import { uid, now, localDay, formatDate, clock, type Lesson, type Note } from '../domain';
 import { Field, Modal, Empty, ErrorBox, Badge, download, errorText, useConfirm, type Notify } from './common';
 import Recorder from './Recorder';
 import CaptureRecovery, { formatSize, setLessonAudio } from './CaptureRecovery';
@@ -32,6 +32,9 @@ import {
   useTranscription,
   type SplitCheck,
 } from '../lessons/transcription';
+import { TeacherNotes, WeekActivities, addAttachments } from './LessonWeek';
+import { defaultDue, defaultLessonTitle, type ActivityTarget } from '../lessons/activities';
+import { DOCUMENT_ACCEPT, usePasteFiles } from '../files';
 import '../styles/lessons.css';
 
 /** AI questions saved as lesson notes start with this, so other screens (e.g. the next-lesson report) can find them. */
@@ -90,36 +93,48 @@ function LessonForm({
     [date, setDate] = useState(lesson?.date ?? localDay()),
     [teacher, setTeacher] = useState(lesson?.teacher ?? ''),
     [pieceId, setPieceId] = useState(lesson?.pieceId ?? ''),
+    [files, setFiles] = useState<File[]>([]),
+    [busy, setBusy] = useState(false),
     [error, setError] = useState('');
+  // A screenshot of the teacher's notes can be pasted straight into the form.
+  usePasteFiles(pasted => setFiles(list => [...list, ...pasted]), { scope: 'dialog', enabled: !lesson });
   return (
     <Modal title={lesson ? 'Editar aula' : 'Registrar aula'} onClose={onClose} guard>
       <form
         onSubmit={async e => {
           e.preventDefault();
+          setBusy(true);
           try {
-            const details = { title: title.trim(), date, teacher: teacher.trim(), pieceId };
+            const details = {
+              title: title.trim() || defaultLessonTitle(date),
+              date,
+              teacher: teacher.trim(),
+              pieceId,
+            };
             if (lesson) {
               await saveLessonDetails(lesson, details);
               onSaved(lesson.id);
             } else {
               const id = uid();
               await db.lessons.add({ id, ...details, transcript: '', summary: '', createdAt: now() });
+              if (files.length) await addAttachments({ id }, files);
               onSaved(id);
             }
             onClose();
           } catch (err) {
             setError(errorText(err));
+          } finally {
+            setBusy(false);
           }
         }}
       >
-        <Field label="Título">
+        <Field label="Título (opcional)">
           <input
             data-autofocus
-            required
             value={title}
             maxLength={160}
             onChange={e => setTitle(e.target.value)}
-            placeholder="Ex.: Aula de interpretação"
+            placeholder={date ? defaultLessonTitle(date) : 'Ex.: Aula de interpretação'}
           />
         </Field>
         <div className="form-grid">
@@ -140,6 +155,40 @@ function LessonForm({
             ))}
           </select>
         </Field>
+        {!lesson && (
+          <Field
+            label="Anotações do professor (opcional)"
+            hint="Fotos, prints ou PDF. Você também pode colar um print com Ctrl+V."
+          >
+            <input
+              type="file"
+              accept={DOCUMENT_ACCEPT}
+              multiple
+              onChange={e => {
+                const picked = [...(e.target.files ?? [])];
+                e.target.value = '';
+                setFiles(list => [...list, ...picked]);
+              }}
+            />
+          </Field>
+        )}
+        {files.length > 0 && (
+          <ul className="picked-files">
+            {files.map((file, i) => (
+              <li key={`${file.name}-${i}`}>
+                <span>{file.name}</span>
+                <button
+                  type="button"
+                  className="icon-btn subtle"
+                  aria-label={`Tirar ${file.name}`}
+                  onClick={() => setFiles(list => list.filter((_, j) => j !== i))}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <ErrorBox message={error} />
         <footer className="modal-actions lesson-form-actions">
           {onDelete && (
@@ -151,8 +200,8 @@ function LessonForm({
           <button type="button" className="btn secondary" onClick={onClose}>
             Cancelar
           </button>
-          <button className="btn" disabled={!title.trim() || !date}>
-            {lesson ? 'Salvar alterações' : 'Criar aula'}
+          <button className="btn" disabled={busy || !date}>
+            {busy ? 'Salvando…' : lesson ? 'Salvar alterações' : 'Criar aula'}
           </button>
         </footer>
       </form>
@@ -164,16 +213,29 @@ export default function Lessons({
   notify,
   selectedId,
   onSelect,
+  onPractice,
+  startNew = false,
+  onStarted,
 }: {
   notify: Notify;
   /** Optional: lets the app shell open a lesson directly (e.g. from Hoje). */
   selectedId?: string;
   onSelect?: (id: string) => void;
+  /** "Praticar" on an activity: its trecho, piece or warm-up collection. */
+  onPractice?: (target: ActivityTarget) => void;
+  /** Opens "Registrar aula" at once (Hoje › Registrar aula e atividades). */
+  startNew?: boolean;
+  onStarted?: () => void;
 }) {
   const loaded = useLiveQuery(() => db.lessons.orderBy('date').reverse().toArray());
   const lessons = loaded ?? [];
-  const [form, setForm] = useState(false),
+  const [form, setForm] = useState(startNew),
     [localSelected, setLocalSelected] = useState('');
+  // The request is used once: coming back to Aulas later shows the list.
+  const started = useRef(onStarted);
+  useEffect(() => {
+    if (startNew) started.current?.();
+  }, [startNew]);
   const selected = selectedId ?? localSelected,
     select = onSelect ?? setLocalSelected;
   const lesson = lessons.find(l => l.id === selected);
@@ -181,14 +243,20 @@ export default function Lessons({
   // address, from Hoje or on the way back.
   if (!loaded) return null;
   return lesson ? (
-    <LessonDetail key={lesson.id} lesson={lesson} onBack={() => select('')} notify={notify} />
+    <LessonDetail
+      key={lesson.id}
+      lesson={lesson}
+      onBack={() => select('')}
+      notify={notify}
+      onPractice={onPractice}
+    />
   ) : (
     <>
       <div className="page-heading">
         <div>
           <span className="eyebrow">APRENDA. ESCUTE. REVISITE.</span>
           <h1>Suas aulas</h1>
-          <p>Guarde as orientações que fazem diferença no seu estudo.</p>
+          <p>As anotações do professor, as atividades da semana e o áudio de cada aula.</p>
         </div>
         <button className="btn" onClick={() => setForm(true)}>
           <Plus size={18} />
@@ -209,7 +277,13 @@ export default function Lessons({
               <div className="grow">
                 <span className="lesson-item-title">{l.title}</span>
                 <p>
-                  {l.teacher || 'Meu caderno de aulas'} · {l.assetId ? 'Com gravação' : 'Notas e orientações'}
+                  {[
+                    l.teacher || 'Meu caderno de aulas',
+                    l.attachments?.length ? 'anotações do professor' : '',
+                    l.assetId ? 'com gravação' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
                 </p>
               </div>
               <Headphones size={24} aria-hidden="true" />
@@ -222,7 +296,7 @@ export default function Lessons({
       ) : (
         <Empty
           title="Cada aula, uma nova descoberta"
-          text="Registre uma aula para guardar o áudio, suas anotações e as orientações do professor."
+          text="Registre uma aula para guardar as anotações do professor (foto, print ou PDF), as atividades da semana e o áudio."
           action={
             <button className="btn" onClick={() => setForm(true)}>
               <Plus size={18} />
@@ -434,109 +508,6 @@ function LessonNote({
   );
 }
 
-function LessonTasks({ lesson, notify }: { lesson: Lesson; notify: Notify }) {
-  const tasks = useLiveQuery(() => db.tasks.where('lessonId').equals(lesson.id).toArray(), [lesson.id]);
-  return tasks ? <LessonTaskList lesson={lesson} tasks={tasks} notify={notify} /> : null;
-}
-function LessonTaskList({ lesson, tasks, notify }: { lesson: Lesson; tasks: Task[]; notify: Notify }) {
-  const confirm = useConfirm();
-  const [title, setTitle] = useState('');
-  // Done tasks go last, but by their state when the tab opened: a row that re-sorted on every tap
-  // would slide another task under the student's finger.
-  const [doneAtOpen] = useState(() => new Set(tasks.filter(t => t.done).map(t => t.id)));
-  const sorted = [...tasks].sort(
-    (a, b) =>
-      Number(doneAtOpen.has(a.id)) - Number(doneAtOpen.has(b.id)) || a.createdAt.localeCompare(b.createdAt),
-  );
-  return (
-    <div className="lesson-tasks">
-      <h2 className="lessons-sr-only">Tarefas desta aula</h2>
-      <form
-        className="lesson-task-form"
-        onSubmit={async e => {
-          e.preventDefault();
-          if (!title.trim()) return;
-          try {
-            await db.tasks.add({
-              id: uid(),
-              pieceId: lesson.pieceId,
-              lessonId: lesson.id,
-              title: title.trim(),
-              done: false,
-              dueDate: '',
-              createdAt: now(),
-            });
-            setTitle('');
-          } catch (err) {
-            notify(errorText(err), 'error');
-          }
-        }}
-      >
-        <input
-          aria-label="Nova tarefa desta aula"
-          value={title}
-          maxLength={300}
-          onChange={e => setTitle(e.target.value)}
-          placeholder="O que praticar a partir desta aula?"
-        />
-        <button className="btn small" disabled={!title.trim()}>
-          <Plus size={16} />
-          Adicionar
-        </button>
-      </form>
-      {sorted.length ? (
-        sorted.map(t => (
-          <div className="task-row" key={t.id}>
-            <button
-              type="button"
-              className={`check-button ${t.done ? 'checked' : ''}`}
-              role="checkbox"
-              aria-checked={t.done}
-              aria-label={t.title}
-              onClick={async () => {
-                try {
-                  await db.tasks.update(t.id, { done: !t.done });
-                } catch (err) {
-                  notify(errorText(err), 'error');
-                }
-              }}
-            >
-              {t.done && <Check size={14} />}
-            </button>
-            <span className={t.done ? 'done' : ''}>{t.title}</span>
-            <button
-              type="button"
-              className="icon-btn subtle danger"
-              aria-label={`Excluir a tarefa ${t.title}`}
-              onClick={async () => {
-                if (
-                  await confirm({
-                    title: 'Excluir esta tarefa?',
-                    message: t.title,
-                    confirmLabel: 'Excluir',
-                    danger: true,
-                  })
-                )
-                  try {
-                    await db.tasks.delete(t.id);
-                  } catch (err) {
-                    notify(errorText(err), 'error');
-                  }
-              }}
-            >
-              <Trash2 size={14} />
-            </button>
-          </div>
-        ))
-      ) : (
-        <p className="subtle-text">
-          Nenhuma tarefa desta aula ainda. Escreva uma aqui ou aceite as sugestões do assistente.
-        </p>
-      )}
-    </div>
-  );
-}
-
 function readProfile(): CaptureProfile {
   try {
     return localStorage.getItem(PROFILE_KEY) === 'voice' ? 'voice' : 'music';
@@ -547,29 +518,28 @@ function readProfile(): CaptureProfile {
 
 const tabs = [
   ['notes', 'Anotações'],
-  ['tasks', 'Tarefas'],
   ['transcript', 'Transcrição'],
   ['ai', 'Assistente'],
 ] as const;
 type Tab = (typeof tabs)[number][0];
 
-function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () => void; notify: Notify }) {
+function LessonDetail({
+  lesson,
+  onBack,
+  notify,
+  onPractice,
+}: {
+  lesson: Lesson;
+  onBack: () => void;
+  notify: Notify;
+  onPractice?: (target: ActivityTarget) => void;
+}) {
   const confirm = useConfirm();
   const asset = useLiveQuery(
     () => (lesson.assetId ? db.assets.get(lesson.assetId) : undefined),
     [lesson.assetId],
   );
   const notes = useLiveQuery(() => db.notes.where('lessonId').equals(lesson.id).toArray(), [lesson.id]) ?? [];
-  const pendingTasks =
-    useLiveQuery(
-      () =>
-        db.tasks
-          .where('lessonId')
-          .equals(lesson.id)
-          .filter(t => !t.done)
-          .count(),
-      [lesson.id],
-    ) ?? 0;
   const [capturing, setCapturing] = useState(false),
     [recElapsed, setRecElapsed] = useState<number | null>(null),
     [profile, setProfile] = useState<CaptureProfile>(readProfile);
@@ -735,6 +705,7 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
     const items = [
       `a aula “${lesson.title}”`,
       asset ? `o áudio (${formatSize(asset.size)})` : '',
+      lesson.attachments?.length ? `as anotações do professor (${lesson.attachments.length})` : '',
       notes.length === 1 ? 'uma anotação' : notes.length ? `${notes.length} anotações` : '',
     ].filter(Boolean);
     // "a aula" and "anotações" are feminine; with "o áudio" in the list the participle is masculine.
@@ -745,7 +716,7 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
     if (
       !(await confirm({
         title: 'Excluir esta aula?',
-        message: `${what} Não é possível desfazer. As tarefas criadas a partir dela continuam no seu plano.`,
+        message: `${what} Não é possível desfazer. As atividades criadas a partir dela continuam no seu plano.`,
         confirmLabel: 'Excluir aula',
         danger: true,
       }))
@@ -755,6 +726,7 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
       await db.transaction('rw', [db.lessons, db.assets, db.notes, db.tasks], async () => {
         await db.lessons.delete(lesson.id);
         if (lesson.assetId) await db.assets.delete(lesson.assetId);
+        if (lesson.attachments?.length) await db.assets.bulkDelete(lesson.attachments);
         await db.notes.where('lessonId').equals(lesson.id).delete();
         await db.tasks.where('lessonId').equals(lesson.id).modify({ lessonId: undefined });
       });
@@ -920,7 +892,7 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
             {formatDate(lesson.date)} · {lesson.teacher || 'CADERNO DE AULAS'}
           </span>
           <h1>{lesson.title}</h1>
-          <p>Ouça de novo. Anote o que importa.</p>
+          <p>As anotações do professor, as atividades da semana e o áudio da aula.</p>
         </div>
         <div className="lesson-heading-actions">
           <button className="btn secondary" onClick={() => setEditing(true)}>
@@ -929,6 +901,11 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
           </button>
         </div>
       </div>
+      <div className="lesson-week">
+        <TeacherNotes lesson={lesson} notify={notify} />
+        <WeekActivities lesson={lesson} notify={notify} onPractice={onPractice} />
+      </div>
+      <h2 className="lesson-audio-heading">Áudio e anotações da aula</h2>
       <div className="lesson-workspace">
         <section className="panel audio-panel" aria-label="Áudio da aula">
           <div className="audio-art">
@@ -1067,7 +1044,6 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
                 onClick={() => setTab(k)}
               >
                 {v}
-                {k === 'tasks' && pendingTasks > 0 ? ` (${pendingTasks})` : ''}
               </button>
             ))}
           </div>
@@ -1141,7 +1117,6 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
                 ))}
               </>
             )}
-            {tab === 'tasks' && <LessonTasks lesson={lesson} notify={notify} />}
             {tab === 'transcript' && (
               <>
                 <h2>Revisite o que foi dito</h2>
@@ -1312,11 +1287,11 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
                               lessonId: lesson.id,
                               title: t.title,
                               done: false,
-                              dueDate: '',
+                              dueDate: defaultDue(lesson.date),
                               createdAt: now(),
                             });
                             setAccepted(a => [...a, i]);
-                            notify('Tarefa adicionada. Ela aparece em Tarefas, nesta aula.');
+                            notify('Atividade adicionada às atividades da semana, no alto desta aula.');
                           } catch (err) {
                             notify(errorText(err), 'error');
                           }

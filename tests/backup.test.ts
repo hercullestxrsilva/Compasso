@@ -88,6 +88,41 @@ describe('restore protects the existing library', () => {
     await expect(restoreBackup(broken)).rejects.toThrow('referências');
     expect(await db.assets.count()).toBe(1);
   });
+  it("keeps a lesson's teacher notes and activity details, and rejects notes whose file is missing", async () => {
+    const withNotes = fixture();
+    withNotes.tables.lessons = [
+      {
+        id: 'lesson',
+        title: 'Aula de 22/9',
+        date: '2026-09-22',
+        teacher: '',
+        pieceId: '',
+        transcript: '',
+        summary: '',
+        createdAt: '2026-09-22',
+        attachments: ['asset'],
+      },
+    ];
+    withNotes.tables.tasks = [
+      {
+        id: 'task',
+        pieceId: '',
+        lessonId: 'lesson',
+        title: 'Escala de Fá',
+        detail: 'MS e MJ, M=50, 1 oitava',
+        done: false,
+        dueDate: '2026-09-29',
+        createdAt: '2026-09-22',
+      },
+    ];
+    await restoreBackup(withNotes);
+    expect((await db.lessons.get('lesson'))?.attachments).toEqual(['asset']);
+    expect((await db.tasks.get('task'))?.detail).toBe('MS e MJ, M=50, 1 oitava');
+    const broken = structuredClone(withNotes);
+    broken.tables.lessons[0].attachments = ['gone'];
+    await expect(restoreBackup(broken)).rejects.toThrow('referências');
+    expect(await db.lessons.count()).toBe(1);
+  });
   it('keeps font size and moved coordinates through backup restoration', async () => {
     const backup = fixture();
     backup.tables.annotations.push({

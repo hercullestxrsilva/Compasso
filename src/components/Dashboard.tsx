@@ -32,7 +32,13 @@ import {
   secondsByDay,
   type WeeklyGoal,
 } from '../practice/stats';
+import { ActivityRow } from './LessonWeek';
+import { activityLabel, activityTarget, sortActivities, type ActivityTarget } from '../lessons/activities';
 import '../styles/progress.css';
+import '../styles/lessons.css';
+
+/** Activities listed on Hoje; the rest are in their lessons and pieces. */
+const ACTIVITIES_SHOWN = 6;
 
 const GOAL_KEY = 'compasso:weekly-goal',
   BUDGET_KEY = 'compasso:plan-minutes';
@@ -82,6 +88,8 @@ export default function Dashboard({
   onPiece,
   onPractice,
   onLesson,
+  onActivity,
+  onNewLesson,
   onAdd,
   notify,
 }: {
@@ -90,6 +98,10 @@ export default function Dashboard({
   onPractice: (id: string) => void;
   /** Opens that lesson (the list when absent). */
   onLesson?: (id: string) => void;
+  /** "Praticar" on an activity of the week. */
+  onActivity?: (target: ActivityTarget) => void;
+  /** Opens "Registrar aula" in Aulas. */
+  onNewLesson?: () => void;
   onAdd: () => void;
   notify: Notify;
 }) {
@@ -426,35 +438,49 @@ export default function Dashboard({
         </div>
         <aside>
           <WeekPanel sessions={sessions} today={today} />
-          <section className="panel">
+          <section className="panel week-tasks">
             <div className="section-heading">
-              <h2>Para o próximo estudo</h2>
+              <h2>Atividades da semana</h2>
               <Target size={18} />
             </div>
             {pending.length ? (
-              pending.slice(0, 5).map(t => (
-                <div className="task-row" key={t.id}>
-                  <button
-                    className="check-button"
-                    aria-label={`Concluir ${t.title}`}
-                    onClick={async () => {
-                      try {
-                        await db.tasks.update(t.id, { done: true });
-                      } catch (e) {
-                        notify(errorText(e), 'error');
-                      }
-                    }}
-                  >
-                    <Check size={13} />
-                  </button>
-                  <div>
-                    <strong>{t.title}</strong>
-                    <small>{allPieces.find(p => p.id === t.pieceId)?.title ?? 'Tarefa da aula'}</small>
-                  </div>
-                </div>
-              ))
+              <ul className="activity-list">
+                {sortActivities(pending)
+                  .slice(0, ACTIVITIES_SHOWN)
+                  .map(t => (
+                    <ActivityRow
+                      key={t.id}
+                      compact
+                      task={t}
+                      label={activityLabel(t, allPieces, segments)}
+                      target={activityTarget(t, allPieces)}
+                      overdue={!!t.dueDate && t.dueDate < today}
+                      onPractice={onActivity}
+                      onToggle={async () => {
+                        try {
+                          await db.tasks.update(t.id, { done: true });
+                        } catch (e) {
+                          notify(errorText(e), 'error');
+                        }
+                      }}
+                    />
+                  ))}
+              </ul>
             ) : (
-              <p className="subtle-text">As tarefas que você criar nas peças e nas aulas aparecem aqui.</p>
+              <p className="subtle-text">
+                Quando o professor mandar as anotações da aula, registre aqui o que ele pediu para a semana.
+              </p>
+            )}
+            {pending.length > ACTIVITIES_SHOWN && (
+              <p className="hint">
+                Mais {plural(pending.length - ACTIVITIES_SHOWN, 'atividade', 'atividades')} nas aulas e peças.
+              </p>
+            )}
+            {onNewLesson && (
+              <button className="link-btn" onClick={onNewLesson}>
+                <Plus size={15} />
+                Registrar aula e atividades
+              </button>
             )}
           </section>
           <section className="panel">

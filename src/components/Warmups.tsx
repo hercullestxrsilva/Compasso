@@ -50,6 +50,7 @@ import {
   type Notify,
 } from './common';
 import ScoreViewer from './ScoreViewer';
+import { DOCUMENT_ACCEPT, prepareDocuments, usePasteFiles } from '../files';
 import '../styles/warmups.css';
 
 const LAST_KEY = 'compasso:warmup-last';
@@ -909,8 +910,6 @@ export interface ImportedCollection {
   manual: boolean;
 }
 
-const accepted = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
-
 function ImportDialog({
   collections,
   onClose,
@@ -926,14 +925,18 @@ function ImportDialog({
     [error, setError] = useState('');
   const update = (key: string, patch: Partial<Pending>) =>
     setItems(list => list.map(i => (i.key === key ? { ...i, ...patch } : i)));
-  const add = (files: FileList | null) => {
+  const add = async (chosen: File[]) => {
     setError('');
-    for (const file of files ? [...files] : []) {
+    let files: File[];
+    try {
+      // Images chosen together become one book, a page each (e.g. prints of a Czerny study).
+      files = await prepareDocuments(chosen, chosen[0]?.name ?? 'Aquecimento');
+    } catch (err) {
+      setError(errorText(err));
+      return;
+    }
+    for (const file of files) {
       const key = `${file.name}-${file.size}-${file.lastModified}-${Math.random()}`;
-      if (!accepted.includes(file.type) && !/\.pdf$/i.test(file.name)) {
-        setError(`“${file.name}” não é um PDF nem uma imagem.`);
-        continue;
-      }
       setItems(list => [
         ...list,
         { key, file, title: titleFromFileName(file.name), kind: 'etudes', split: 'pages', include: true },
@@ -957,6 +960,7 @@ function ImportDialog({
         );
     }
   };
+  usePasteFiles(pasted => void add(pasted), { scope: 'dialog' });
   const ready = items.filter(i => i.include && i.inspection && !i.error && i.title.trim());
   const reading = items.some(i => !i.inspection && !i.error);
   const run = async () => {
@@ -1005,11 +1009,12 @@ function ImportDialog({
         {items.length ? 'Adicionar outro arquivo' : 'Escolher PDFs ou imagens'}
         <input
           type="file"
-          accept="application/pdf,image/png,image/jpeg,image/webp"
+          accept={DOCUMENT_ACCEPT}
           multiple
           onChange={e => {
-            add(e.target.files);
+            const chosen = [...(e.target.files ?? [])];
             e.target.value = '';
+            void add(chosen);
           }}
         />
       </label>

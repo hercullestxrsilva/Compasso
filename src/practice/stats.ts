@@ -363,6 +363,7 @@ export function buildLessonReport(input: ReportInput) {
     lines.push(
       `- [ ] ${oneLine(t.title)}${context ? ` (${context})` : ''}${t.dueDate ? ` — até ${formatDate(t.dueDate)}` : ''}`,
     );
+    if (t.detail?.trim()) lines.push(`  ${oneLine(t.detail)}`);
   }
   lines.push('');
 

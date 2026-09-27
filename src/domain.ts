@@ -158,6 +158,8 @@ export interface Lesson {
   transcript: string;
   summary: string;
   createdAt: string;
+  /** The teacher's notes for the lesson: photos, screenshots or PDFs (asset ids), in the order added. */
+  attachments?: string[];
 }
 export interface Note {
   id: string;
@@ -174,6 +176,8 @@ export interface Task {
   segmentId?: string;
   lessonId?: string;
   title: string;
+  /** How to practise it, e.g. "MS e MJ, M=50, 1 oitava; direto e contrário". */
+  detail?: string;
   done: boolean;
   dueDate: string;
   createdAt: string;

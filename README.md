@@ -30,13 +30,13 @@ Abra http://127.0.0.1:5188/. Para a API opcional, rode `npm run server` em um se
 ## Primeiro estudo
 
 1. Em **Repertório**, adicione uma peça e escolha “Quero estudar”, “Em estudo” ou “Já estudei”.
-2. Abra a peça e importe um PDF ou imagem. Versões novas preservam as anteriores.
+2. Abra a peça e importe um PDF, uma foto ou um print (qualquer imagem; no iPad, também direto da câmera). Vários prints escolhidos juntos viram as páginas de uma só partitura, e no formulário da peça dá para colar um print com Ctrl+V. Versões novas preservam as anteriores.
 3. Use caneta, marca-texto ou texto; ao inserir texto, escolha o tamanho da fonte entre 10 e 100. As camadas separam suas notas, dedilhado e orientações do professor. Para reposicionar uma marcação, escolha **Selecionar e mover** e arraste o texto, traço de caneta ou marca-texto. Com um texto selecionado, use **Editar texto e tamanho** para alterá-lo.
    A navegação entre páginas aparece acima e abaixo da partitura. Use **Tela cheia** na barra superior para ampliar a leitura; o botão muda para **Sair da tela cheia**. No computador, Esc também fecha a visualização ampliada.
 4. Em **Marcar trecho**, arraste um retângulo sobre a passagem. Registre compassos, objetivo, mão, BPM e revisão.
 5. Abra **Praticar**, selecione o trecho e configure duração, repetições, preparação, pausas e progressão do andamento. Em **Duração por → Contínuo (sem fim)**, o metrônomo segue sem contar compassos, repetições ou pausas até você encerrar.
 6. Ao terminar, registre como foi. Em **Evolução**, consulte sessões e trechos a revisar.
-7. Em **Aulas**, registre a aula, importe ou grave áudio e anote em momentos específicos. É possível escrever a transcrição manualmente.
+7. Em **Aulas** (ou em Hoje › **Registrar aula e atividades**), registre a aula com as **anotações do professor**: fotos, prints (Ctrl+V) ou PDF. Ao lado delas, escreva as **atividades da semana**: o que fazer, como praticar, para qual peça, trecho ou exercício do Aquecimento, e até quando (a próxima aula, por padrão). As atividades aparecem em Hoje com **Praticar**. Abaixo ficam o áudio da aula, as anotações com tempo e a transcrição.
 8. Exporte seu backup regularmente em **Preferências e dados**.
 
 Em **Evolução → Minhas gravações**, acompanhe o nível do microfone durante uma nova tentativa. Se o indicador não reagir, selecione outra entrada antes de gravar novamente. Para uma gravação antiga cuja barra de reprodução não mostra a duração, use **Criar cópia reproduzível**: o aplicativo tenta gerar um WAV com duração definida, mantendo o arquivo original e oferecendo **Baixar arquivo**. Se o áudio original não contiver sinal ou não puder ser decodificado, uma cópia não consegue recuperar o som ausente.

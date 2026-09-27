@@ -126,6 +126,7 @@ const tablesSchema = z.object({
         transcript: longText,
         summary: longText,
         createdAt: date,
+        attachments: z.array(id).max(200).optional(),
       }),
     )
     .max(10000),
@@ -150,6 +151,7 @@ const tablesSchema = z.object({
         segmentId: optionalId,
         lessonId: optionalId,
         title: str,
+        detail: str.optional(),
         done: z.boolean(),
         dueDate: date,
         createdAt: date,
@@ -529,7 +531,9 @@ function checkReferences({ tables, assets, missing }: RestoreData) {
     scoreIds = new Set(tables.scores.map(s => s.id));
   if (
     tables.scores.some(s => !assetIds.has(s.assetId) || !pieceIds.has(s.pieceId)) ||
-    tables.lessons.some(l => l.assetId && !assetIds.has(l.assetId)) ||
+    tables.lessons.some(
+      l => (l.assetId && !assetIds.has(l.assetId)) || l.attachments?.some(a => !assetIds.has(a)),
+    ) ||
     tables.recordings.some(r => !assetIds.has(r.assetId)) ||
     tables.annotations.some(a => !scoreIds.has(a.scoreId))
   )

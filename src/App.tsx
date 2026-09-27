@@ -34,6 +34,7 @@ import { ConfirmProvider, Modal, useTopModal, type Notify, type NotifyTone } fro
 import { TopbarActivity, TopbarStatus, activityHead, byUrgency } from './components/Topbar';
 import { db } from './db';
 import { isWarmup } from './domain';
+import type { ActivityTarget } from './lessons/activities';
 import { getActivities, useActivities, type Activity } from './activity';
 import { getUnsaved, type UnsavedWork } from './unsaved';
 import { applyTheme } from './theme';
@@ -769,6 +770,17 @@ function Shell() {
     },
     [commit],
   );
+  // "Praticar" on an activity of the week: its trecho or exercise, its whole piece or its warm-up collection.
+  const practiceActivity = useCallback(
+    (target: ActivityTarget) => {
+      if (target.kind === 'segment') practice(target.id);
+      else if (target.kind === 'piece') practice(`piece:${target.id}`);
+      else navigate({ view: 'warmups', pieceId: target.id });
+    },
+    [practice, navigate],
+  );
+  // Hoje › "Registrar aula e atividades" opens the form on the lessons screen.
+  const [newLesson, setNewLesson] = useState(false);
   const selectWarmup = useCallback(
     (collectionId?: string, exerciseId?: string) => {
       // Choosing a collection or a scale changes the address without adding a history entry.
@@ -926,6 +938,11 @@ function Shell() {
                 onPiece={openPiece}
                 onPractice={practice}
                 onLesson={selectLesson}
+                onActivity={practiceActivity}
+                onNewLesson={() => {
+                  setNewLesson(true);
+                  navigate({ view: 'lessons' });
+                }}
                 onAdd={() => setAdding(true)}
                 notify={notify}
               />
@@ -955,7 +972,14 @@ function Shell() {
               <Practice selectedId={route.target ?? ''} onSelect={selectPractice} notify={notify} />
             )}
             {route.view === 'lessons' && (
-              <Lessons notify={notify} selectedId={route.lessonId ?? ''} onSelect={selectLesson} />
+              <Lessons
+                notify={notify}
+                selectedId={route.lessonId ?? ''}
+                onSelect={selectLesson}
+                onPractice={practiceActivity}
+                startNew={newLesson}
+                onStarted={() => setNewLesson(false)}
+              />
             )}
             {route.view === 'progress' && (
               <Progress

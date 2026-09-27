@@ -28,6 +28,7 @@ import {
   type Hand,
   type Score,
 } from '../domain';
+import { DOCUMENT_ACCEPT, prepareDocuments } from '../files';
 import { Modal, Field, Empty, Badge, ErrorBox, errorText, useConfirm, type Notify } from './common';
 import { PieceForm } from './Library';
 import ScoreViewer from './ScoreViewer';
@@ -37,7 +38,6 @@ import { forgetViewState, loadLastScore, saveLastScore, titleFromFileName } from
 import { plural, ratingLabels, relativeDay, segmentStats, type SegmentStats } from '../segment-stats';
 import '../styles/score.css';
 
-const scoreTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
 /** A note typed in Notas and not saved yet: leaving the piece asks first. */
 const noteDraftWork = {
   title: 'Sair sem salvar a nota?',
@@ -215,21 +215,22 @@ function ImportScoreButton({
   onFile,
   big = false,
 }: {
-  onFile: (file: File) => void | Promise<void>;
+  onFile: (files: File[]) => void | Promise<void>;
   big?: boolean;
 }) {
   return (
     <label className={`btn file-button ${big ? 'score-import-big' : 'small secondary'}`}>
       {big ? <FileUp size={20} /> : <Plus size={16} />}
-      {big ? 'Importar partitura (PDF ou imagem)' : 'Importar'}
+      {big ? 'Importar partitura (PDF, foto ou print)' : 'Importar'}
       <input
         type="file"
-        accept={scoreTypes.join(',')}
+        accept={DOCUMENT_ACCEPT}
+        multiple
         aria-label={big ? undefined : 'Importar outra versão da partitura'}
         onChange={async e => {
-          const file = e.target.files?.[0];
+          const files = [...(e.target.files ?? [])];
           e.target.value = '';
-          if (file) await onFile(file);
+          if (files.length) await onFile(files);
         }}
       />
     </label>
@@ -438,20 +439,23 @@ export default function PieceDetail({
   }, [noteDraft]);
   if (!piece) return <Empty title="Carregando peça" text="Preparando seu espaço de estudo." />;
 
-  const importScore = async (file: File) => {
+  const importScore = async (files: File[]) => {
     try {
-      if (!scoreTypes.includes(file.type)) throw new Error('Use uma partitura em PDF, PNG, JPG ou WebP.');
+      // Several screenshots chosen together become the pages of one score.
+      const docs = await prepareDocuments(files, piece?.title ?? 'Partitura');
       let next = '';
       await db.transaction('rw', [db.assets, db.scores], async () => {
-        const asset = await storeAsset(file);
-        next = uid();
-        await db.scores.add({
-          id: next,
-          pieceId: id,
-          assetId: asset.id,
-          title: titleFromFileName(file.name),
-          createdAt: now(),
-        });
+        for (const doc of docs) {
+          const asset = await storeAsset(doc);
+          next = uid();
+          await db.scores.add({
+            id: next,
+            pieceId: id,
+            assetId: asset.id,
+            title: titleFromFileName(doc.name),
+            createdAt: now(),
+          });
+        }
       });
       setScoreId(next);
       setTarget(undefined);
