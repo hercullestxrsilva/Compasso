@@ -15,7 +15,8 @@
     <title>Compasso · estudos de piano</title>
     <script>
       // The saved theme (Preferências) applies before the first paint, so an evening visit never flashes
-      // white. Same rule as applyTheme() in src/theme.ts: no attribute means "follow the system".
+      // white. Same rule as applyTheme() in src/theme.ts, which also restores these tags when the choice
+      // goes back to "system": no attribute means "follow the system". Colours: CHROME_COLORS there.
       (function () {
         try {
           var choice = localStorage.getItem('compasso:theme');
