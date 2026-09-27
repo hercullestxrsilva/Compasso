@@ -9,7 +9,8 @@ import {
   useSyncExternalStore,
 } from 'react';
 import type { ReactNode } from 'react';
-import { X, Music2 } from 'lucide-react';
+import { X } from 'lucide-react';
+import BrandSymbol from './BrandSymbol';
 
 export type NotifyTone = 'success' | 'error' | 'info';
 /** Shows a toast. Use tone 'error' for failures so they are not styled as a success. */
@@ -177,7 +178,7 @@ export function Empty({ title, text, action }: { title: string; text: string; ac
   return (
     <div className="empty">
       <div className="empty-icon">
-        <Music2 size={30} />
+        <BrandSymbol size={30} />
       </div>
       <h3>{title}</h3>
       <p>{text}</p>

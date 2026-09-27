@@ -22,10 +22,10 @@ import {
   X,
   WifiOff,
   Check,
-  Music2,
   AlertTriangle,
   Info,
 } from 'lucide-react';
+import BrandSymbol from './components/BrandSymbol';
 import Dashboard from './components/Dashboard';
 import { Library, PieceForm } from './components/Library';
 import { ConfirmProvider, Modal, useTopModal, type Notify, type NotifyTone } from './components/common';
@@ -106,7 +106,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: boolean 
 function ViewLoading() {
   return (
     <div className="view-loading" role="status">
-      <Music2 size={22} aria-hidden="true" />
+      <BrandSymbol size={26} />
       <span>Abrindo…</span>
     </div>
   );
@@ -786,7 +786,7 @@ function Shell() {
       </a>
       <div className="mobile-top">
         <button className="brand" aria-label="compasso: ir para Hoje" onClick={() => goView('home')}>
-          <Music2 size={24} aria-hidden="true" />
+          <BrandSymbol size={26} className="brand-symbol" />
           <span aria-hidden="true">
             compasso<span className="brand-dot">.</span>
           </span>
@@ -821,9 +821,7 @@ function Shell() {
         className={`sidebar ${mobile ? 'open' : ''}`}
       >
         <button className="brand" aria-label="compasso: ir para Hoje" onClick={() => goView('home')}>
-          <div className="brand-mark" aria-hidden="true">
-            <Music2 size={25} />
-          </div>
+          <BrandSymbol size={34} className="brand-symbol" />
           <span aria-hidden="true">
             compasso<span className="brand-dot">.</span>
           </span>
@@ -844,14 +842,15 @@ function Shell() {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="sidebar-note">
-            <span className="eyebrow">O ESTUDO É SEU.</span>
-            <p>
-              Cada pequena melhora
-              <br />
-              merece ser ouvida.
-            </p>
-          </div>
+          <figure className="sidebar-note">
+            <blockquote>
+              <p>
+                O piano é o instrumento mais fácil de tocar no primeiro dia e o mais difícil de dominar no
+                quinquagésimo primeiro ano.
+              </p>
+            </blockquote>
+            <figcaption>Vladimir Horowitz</figcaption>
+          </figure>
           <button
             className={`settings-nav ${onSettings ? 'active' : ''}`}
             aria-current={onSettings ? 'page' : undefined}

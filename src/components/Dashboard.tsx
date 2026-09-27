@@ -6,7 +6,6 @@ import {
   BookOpen,
   Check,
   Clock3,
-  Music2,
   Play,
   Plus,
   Target,
@@ -16,6 +15,7 @@ import {
   ListPlus,
   Settings2,
 } from 'lucide-react';
+import BrandSymbol from './BrandSymbol';
 import { db } from '../db';
 import { localDay, formatDate, hands, uid, type Session } from '../domain';
 import { Badge, Empty, Field, Modal, errorText, type Notify } from './common';
@@ -245,7 +245,7 @@ export default function Dashboard({
               </button>
             </div>
             <div className="focus-emblem" aria-hidden="true">
-              <Music2 size={90} strokeWidth={0.7} />
+              <BrandSymbol size={78} />
               <span>
                 UM COMPASSO
                 <br />

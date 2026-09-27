@@ -30,7 +30,10 @@
   --accent-strong: #0e5a5e;
   --accent-soft: #e3f1ee;
   --accent-ink: #ffffff; /* text and icons on --accent */
-  --gold: #e8b469;
+  /* Brand (brand/simbolo.svg): cream strokes and the orange note head */
+  --brand-cream: #f4efe3;
+  --brand-accent: #f2a03d;
+  --gold: var(--brand-accent);
   --gold-ink: #7a5410;
 
   /* Feedback */
@@ -515,15 +518,10 @@ a {
   font-family: var(--font-serif);
   font-size: var(--fs-brand);
   letter-spacing: -0.03em;
-  color: var(--nav-ink-strong);
+  color: var(--brand-cream);
 }
-.brand-mark {
-  height: 40px;
-  width: 36px;
-  border: 1px solid var(--nav-line);
-  border-radius: var(--radius-sm);
-  display: grid;
-  place-items: center;
+.brand-symbol {
+  color: var(--brand-cream);
   flex-shrink: 0;
 }
 .brand-dot {
@@ -577,16 +575,50 @@ a {
   padding: var(--space-5) var(--space-3) var(--space-3);
   margin: 0 0 var(--space-4);
 }
-.sidebar-note .eyebrow {
-  color: var(--nav-muted);
+.sidebar-note blockquote {
+  margin: 0;
 }
 .sidebar-note p {
   font-family: var(--font-serif);
-  color: var(--nav-ink-strong);
-  font-size: var(--fs-xl);
+  color: var(--brand-cream);
+  font-size: var(--fs-lg);
   font-style: italic;
   line-height: 1.4;
+  margin: 0;
+}
+.sidebar-note p::before {
+  content: '“';
+  display: block;
+  font-size: 2.6em;
+  line-height: 0.6;
+  height: 0.45em;
+  color: var(--brand-accent);
+  font-style: normal;
+}
+.sidebar-note figcaption {
   margin-top: var(--space-3);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--nav-muted);
+}
+.sidebar-note figcaption::before {
+  content: '— ';
+}
+/* Laptop heights: keep "Preferências e dados" reachable without scrolling the sidebar. */
+@media (max-height: 860px) {
+  .sidebar-caption {
+    margin-top: var(--space-5);
+  }
+  .sidebar-bottom {
+    padding-top: var(--space-4);
+  }
+  .sidebar-note {
+    padding-top: var(--space-4);
+  }
+  .sidebar-note p {
+    font-size: var(--fs-md);
+  }
 }
 .settings-nav {
   width: 100%;
