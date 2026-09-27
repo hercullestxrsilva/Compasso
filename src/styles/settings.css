@@ -1,12 +1,17 @@
 /* Preferências e dados: backup status, progress and restore summary. */
+.settings-grid,
+.restore-summary {
+  --settings-radius: calc(var(--radius) - 6px);
+  --settings-amber: color-mix(in srgb, var(--gold) 48%, black);
+}
 .backup-status {
   display: flex;
   gap: 12px;
   align-items: flex-start;
   padding: 12px 15px;
-  border-radius: 8px;
+  border-radius: var(--settings-radius);
   border-left: 3px solid var(--green);
-  background: #edf4f3;
+  background: color-mix(in srgb, var(--green) 8%, var(--paper));
   color: var(--green);
   margin: 14px 0;
   line-height: 1.5;
@@ -28,12 +33,8 @@
 }
 .backup-status.stale {
   border-left-color: var(--gold);
-  background: #fbf1e1;
   background: color-mix(in srgb, var(--gold) 16%, var(--paper));
-  color: #85520f;
-}
-.backup-status.stale small {
-  color: #6b4a1c;
+  color: var(--settings-amber);
 }
 
 .backup-progress {
@@ -51,7 +52,7 @@
 .backup-progress-bar {
   height: 8px;
   background: var(--line);
-  border-radius: 4px;
+  border-radius: 999px;
   overflow: hidden;
 }
 .backup-progress-bar > span {
@@ -59,7 +60,7 @@
   height: 100%;
   width: 0;
   background: var(--green);
-  border-radius: 4px;
+  border-radius: 999px;
   transition: width 0.2s;
 }
 .backup-progress-bar.indeterminate > span {
@@ -86,7 +87,7 @@
   display: flex;
   gap: 8px;
   align-items: flex-start;
-  color: #85520f;
+  color: var(--settings-amber);
   font-size: 0.82rem;
 }
 .backup-captures > svg {
@@ -98,6 +99,24 @@
   cursor: not-allowed;
 }
 
+/* Announced by screen readers, not shown. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.restore-summary:focus,
+.confirm-focus:focus,
+.export-first-done:focus {
+  outline: none;
+}
 .restore-summary p {
   margin: 0 0 12px;
 }
@@ -111,7 +130,7 @@
 }
 .restore-counts li {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--settings-radius);
   padding: 9px 12px;
   color: var(--muted);
   font-size: 0.85rem;
@@ -123,15 +142,18 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+.restore-summary .restore-note {
+  padding-left: 11px;
+  border-left: 3px solid var(--gold);
+  color: var(--ink);
+  font-size: 0.85rem;
+}
+/* Colours come from .error-box; only the layout differs. */
 .restore-summary .restore-warning {
   display: flex;
   gap: 10px;
   align-items: flex-start;
-  padding: 11px 13px;
-  border-radius: 8px;
-  background: #fbecec;
-  border: 1px solid #f1cdcd;
-  color: #973f3f;
+  margin: 0 0 12px;
   font-size: 0.87rem;
 }
 .restore-warning > svg {
@@ -144,12 +166,26 @@
 .export-first .error-box {
   margin: 10px 0 0;
 }
-.export-first-done {
+.export-first .backup-progress {
+  margin: 12px 0 0;
+}
+.export-first .btn[aria-disabled='true'] {
+  opacity: 0.6;
+  cursor: progress;
+}
+.restore-summary .export-first-done {
   display: flex;
   gap: 8px;
-  align-items: center;
+  align-items: flex-start;
   color: var(--green);
   font-size: 0.87rem;
+}
+.restore-summary .export-first-done.pending {
+  color: var(--ink);
+}
+.export-first-done > svg {
+  flex: none;
+  margin-top: 2px;
 }
 
 @media (pointer: coarse) {

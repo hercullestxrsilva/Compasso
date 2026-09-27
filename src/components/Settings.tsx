@@ -18,22 +18,29 @@ import {
   BACKUP_EVENT,
   BACKUP_STALE_DAYS,
   CLOUD_BACKUP_LIMIT,
+  UnreadableAssetError,
   backupAgeDays,
   backupFileName,
+  backupTables,
+  cloudErrorText,
   describeBackupAge,
+  describeUnreadable,
   exportRoom,
   formatBytes,
   lastBackupAt,
+  lastBackupHow,
   makeBackupZip,
   markBackup,
   mediaBytes,
   openBackup,
   type BackupProgress,
   type BackupSummary,
+  type BackupTable,
 } from '../backup';
 import { db } from '../db';
+import { SaveCancelled, pickSaveTarget, saveBlob, type SaveResult, type SaveTarget } from '../saveFile';
 import { cloud } from '../services';
-import { Field, download, errorText, useConfirm, type Notify } from './common';
+import { Field, errorText, useConfirm, type Notify } from './common';
 import '../styles/settings.css';
 interface CloudRow {
   id: string;
@@ -41,31 +48,41 @@ interface CloudRow {
   path: string;
   bytes: number;
 }
-interface LibraryCounts {
-  pieces: number;
-  lessons: number;
-  recordings: number;
-  sessions: number;
-  assets: number;
-  captures: number;
-}
+/** Rows per backed-up table, plus interrupted captures (not in backups) and the backed-up total. */
+type LibraryCounts = Record<BackupTable, number> & { captures: number; total: number };
 interface Progress {
   where: 'local' | 'cloud';
   label: string;
   done?: number;
   total?: number;
 }
+type ExportRun = (
+  target: SaveTarget,
+  onProgress: (p: BackupProgress) => void,
+  skip: string[],
+) => Promise<SaveResult>;
+interface ExportFirstOptions {
+  room: ReturnType<typeof exportRoom>;
+  bytes: number;
+  run: ExportRun;
+}
 const count = (n: number, one: string, many: string) =>
   `${n.toLocaleString('pt-BR')} ${n === 1 ? one : many}`;
 const joinPt = (items: string[]) =>
   items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} e ${items[items.length - 1]}`;
-const describeLibrary = (c: Pick<LibraryCounts, 'pieces' | 'lessons' | 'recordings' | 'sessions'>) =>
-  joinPt([
-    count(c.pieces, 'peça', 'peças'),
-    count(c.lessons, 'aula', 'aulas'),
-    count(c.recordings, 'gravação', 'gravações'),
-    count(c.sessions, 'sessão', 'sessões'),
-  ]);
+const describeLibrary = (c: LibraryCounts) =>
+  joinPt(
+    (
+      [
+        [c.pieces, 'peça', 'peças'],
+        [c.lessons, 'aula', 'aulas'],
+        [c.recordings, 'gravação', 'gravações'],
+        [c.sessions, 'sessão', 'sessões'],
+      ] as const
+    )
+      .filter(([n]) => n > 0)
+      .map(([n, one, many]) => count(n, one, many)),
+  );
 const formatWhen = (iso: string) => {
   const date = new Date(iso.length === 10 ? `${iso}T12:00:00` : iso);
   if (Number.isNaN(date.getTime())) return iso;
@@ -73,7 +90,24 @@ const formatWhen = (iso: string) => {
     ? date.toLocaleDateString('pt-BR', { dateStyle: 'long' })
     : date.toLocaleString('pt-BR', { dateStyle: 'long', timeStyle: 'short' });
 };
-const hasData = (c?: LibraryCounts) => !!c && c.pieces + c.lessons + c.recordings + c.sessions + c.assets > 0;
+const hasData = (c?: LibraryCounts) => !!c && c.total > 0;
+const estimate = async () => {
+  try {
+    return await navigator.storage?.estimate();
+  } catch {
+    return undefined;
+  }
+};
+const freeSpace = (e?: StorageEstimate) =>
+  e?.quota && e.usage !== undefined ? Math.max(0, e.quota - e.usage) : undefined;
+const skipOptions = (e: UnreadableAssetError) => {
+  const one = e.assets.length === 1;
+  return {
+    title: one ? 'Um arquivo não pôde ser lido' : 'Alguns arquivos não puderam ser lidos',
+    message: `${describeUnreadable(e.assets)} Você pode exportar todo o resto: os registros entram no backup, só sem ${one ? 'esse arquivo' : 'esses arquivos'}.`,
+    confirmLabel: one ? 'Exportar sem este arquivo' : 'Exportar sem esses arquivos',
+  };
+};
 
 export default function Settings({ notify }: { notify: Notify }) {
   const confirm = useConfirm();
@@ -92,24 +126,25 @@ export default function Settings({ notify }: { notify: Notify }) {
     [persistent, setPersistent] = useState(false),
     [busy, setBusy] = useState<'' | 'export' | 'restore' | 'cloud' | 'login'>(''),
     [progress, setProgress] = useState<Progress>(),
-    [last, setLast] = useState(lastBackupAt);
+    [restoring, setRestoring] = useState(''),
+    [last, setLast] = useState(lastBackupAt),
+    [lastHow, setLastHow] = useState(lastBackupHow);
   const [email, setEmail] = useState(''),
     [password, setPassword] = useState(''),
     [user, setUser] = useState(''),
     [backups, setBackups] = useState<CloudRow[]>([]),
     [ai, setAi] = useState('Verificando serviço…');
-  const exportFirst = useRef<Promise<unknown> | undefined>(undefined);
-  const library = useLiveQuery(async () => {
-    const [pieces, lessons, recordings, sessions, assets, captures] = await Promise.all([
-      db.pieces.count(),
-      db.lessons.count(),
-      db.recordings.count(),
-      db.sessions.count(),
-      db.assets.count(),
-      db.captures.count(),
-    ]);
-    return { pieces, lessons, recordings, sessions, assets, captures };
+  /** Export of the current library started from the restore dialog. */
+  const exportFirst = useRef<{ promise: Promise<SaveResult>; settled: boolean } | undefined>(undefined);
+  const library = useLiveQuery(async (): Promise<LibraryCounts> => {
+    const counts = await Promise.all(backupTables.map(n => db.table(n).count()));
+    const byTable = Object.fromEntries(backupTables.map((n, i) => [n, counts[i]])) as Record<
+      BackupTable,
+      number
+    >;
+    return { ...byTable, captures: await db.captures.count(), total: counts.reduce((s, n) => s + n, 0) };
   });
+  const libraryBytes = useLiveQuery(mediaBytes);
   const since = useLiveQuery(
     async () =>
       last
@@ -121,7 +156,10 @@ export default function Settings({ notify }: { notify: Notify }) {
     [last],
   );
   useEffect(() => {
-    const sync = () => setLast(lastBackupAt());
+    const sync = () => {
+      setLast(lastBackupAt());
+      setLastHow(lastBackupHow());
+    };
     window.addEventListener(BACKUP_EVENT, sync);
     window.addEventListener('storage', sync);
     return () => {
@@ -146,7 +184,7 @@ export default function Settings({ notify }: { notify: Notify }) {
         .select('id,created_at,path,bytes')
         .order('created_at', { ascending: false })
         .limit(5);
-      if (error) throw error;
+      if (error) throw new Error(cloudErrorText(error, 'Não foi possível listar as cópias na nuvem.'));
       setBackups(data ?? []);
     } else setBackups([]);
   };
@@ -173,17 +211,32 @@ export default function Settings({ notify }: { notify: Notify }) {
     };
   }, []);
 
-  const saveBackupFile = async (onProgress?: (p: BackupProgress) => void) => {
-    const { blob } = await makeBackupZip(onProgress);
-    download(blob, backupFileName());
-    markBackup();
-    return blob;
+  /** Saves the zip and records the backup at its snapshot time, so later work still counts as new. */
+  const save = async ({ blob, summary }: { blob: Blob; summary: BackupSummary }, target: SaveTarget) => {
+    const how = await saveBlob(blob, backupFileName(), target);
+    markBackup(summary.createdAt, how);
+    return how;
+  };
+  /** makeBackupZip, offering to leave out files this browser can no longer read. */
+  const buildZip = async (where: Progress['where']) => {
+    let skip: string[] = [];
+    for (;;) {
+      setProgress({ where, label: 'Preparando o backup' });
+      try {
+        return await makeBackupZip(p => setProgress({ where, label: 'Compactando o acervo', ...p }), skip);
+      } catch (e) {
+        if (!(e instanceof UnreadableAssetError)) throw e;
+        setProgress(undefined);
+        if (!(await confirm(skipOptions(e)))) throw new SaveCancelled();
+        skip = [...skip, ...e.assets.map(a => a.id)];
+      }
+    }
   };
   const exportBackup = async () => {
     setBusy('export');
     try {
       const bytes = await mediaBytes();
-      const room = exportRoom(bytes, await navigator.storage?.estimate().catch(() => undefined));
+      const room = exportRoom(bytes, await estimate());
       if (room === 'too-large')
         throw new Error(
           `Os arquivos do acervo somam ${formatBytes(bytes)} e passam de 4 GB, o limite de um backup. Apague gravações que você não usa mais e tente de novo.`,
@@ -197,61 +250,126 @@ export default function Settings({ notify }: { notify: Notify }) {
         }))
       )
         return;
-      setProgress({ where: 'local', label: 'Preparando o backup' });
-      const blob = await saveBackupFile(p =>
-        setProgress({ where: 'local', label: 'Compactando o acervo', ...p }),
-      );
+      // Ask where to save while this tap still counts as a user action (Chrome and Edge).
+      const target = await pickSaveTarget(backupFileName());
+      const zip = await buildZip('local');
+      setProgress({ where: 'local', label: 'Salvando o arquivo' });
+      const how = await save(zip, target);
       notify(
-        `Backup exportado (${formatBytes(blob.size)}) com partituras, gravações, marcações e histórico.`,
+        how === 'file'
+          ? `Backup salvo (${formatBytes(zip.summary.bytes)}) com partituras, gravações, marcações e histórico.`
+          : `Download do backup iniciado (${formatBytes(zip.summary.bytes)}). Confira se o arquivo foi salvo na pasta Downloads.`,
       );
     } catch (e) {
-      notify(errorText(e), 'error');
+      if (!(e instanceof SaveCancelled)) notify(errorText(e), 'error');
     } finally {
       setBusy('');
       setProgress(undefined);
     }
   };
-  const restore = async (where: Progress['where'], load: () => Promise<Blob>) => {
+  const exportCurrent =
+    (where: Progress['where']): ExportRun =>
+    (target, onProgress, skip) => {
+      const entry = {
+        settled: false,
+        promise: makeBackupZip(p => {
+          onProgress(p);
+          // Also shown in the panel, which keeps it visible if the dialog is closed meanwhile.
+          setProgress({ where, label: 'Exportando o acervo atual', ...p });
+        }, skip).then(zip => save(zip, target)),
+      };
+      void entry.promise.then(
+        () => (entry.settled = true),
+        () => (entry.settled = true),
+      );
+      exportFirst.current = entry;
+      return entry.promise;
+    };
+  const restore = async (where: Progress['where'], load: () => Promise<Blob>, cloudId = '') => {
     setBusy('restore');
-    exportFirst.current = undefined;
+    setRestoring(cloudId);
+    let confirmed = false;
     try {
       setProgress({ where, label: where === 'cloud' ? 'Baixando a cópia' : 'Abrindo o arquivo' });
       const prepared = await openBackup(await load(), p =>
         setProgress({ where, label: 'Verificando o backup', ...p }),
       );
+      const [bytesNow, space] = await Promise.all([mediaBytes(), estimate()]);
       setProgress(undefined);
-      const ok = await confirm({
+      confirmed = await confirm({
         title: 'Restaurar este backup?',
         message: (
           <RestoreSummary
             summary={prepared.summary}
             current={library}
-            onExportFirst={() => (exportFirst.current = saveBackupFile())}
+            free={freeSpace(space)}
+            exportFirst={
+              library && !hasData(library)
+                ? undefined
+                : { room: exportRoom(bytesNow, space), bytes: bytesNow, run: exportCurrent(where) }
+            }
           />
         ),
         confirmLabel: 'Substituir e restaurar',
         danger: true,
       });
-      if (!ok) return;
-      if (exportFirst.current) {
-        setProgress({ where, label: 'Terminando a cópia do acervo atual' });
+      if (!confirmed) return;
+      const first = exportFirst.current;
+      if (first) {
+        let how: SaveResult;
         try {
-          await exportFirst.current;
+          how = await first.promise;
         } catch {
           throw new Error(
             'A cópia do acervo atual não foi concluída, então a restauração foi cancelada. Nenhum dado foi alterado.',
           );
         }
+        setProgress(undefined);
+        // A download cannot be confirmed from here: the student checks before anything is erased.
+        if (
+          how === 'download' &&
+          !(await confirm({
+            title: 'A cópia do acervo atual foi salva?',
+            message: (
+              <p className="confirm-focus" tabIndex={-1} data-autofocus>
+                O download foi iniciado, mas o navegador não informa se o arquivo chegou a ser salvo. Confira
+                na pasta Downloads (no iPad, no app Arquivos) antes de continuar: a restauração apaga o acervo
+                deste navegador.
+              </p>
+            ),
+            confirmLabel: 'Já conferi, restaurar',
+            danger: true,
+          }))
+        )
+          return;
       }
       setProgress({ where, label: 'Restaurando' });
       await prepared.apply();
-      // The data here now matches that backup, so it counts as backed up as of its date.
-      markBackup(prepared.summary.createdAt);
+      // The data here now matches a backup the student holds, so nothing is pending as of now.
+      markBackup(new Date(), 'restore');
       notify('Backup restaurado neste navegador.');
     } catch (e) {
       notify(errorText(e), 'error');
     } finally {
+      // An export started from the dialog keeps running after Cancelar; stay busy until it ends.
+      const pending = exportFirst.current;
+      exportFirst.current = undefined;
+      if (pending && !confirmed) {
+        const wasRunning = !pending.settled;
+        try {
+          const how = await pending.promise;
+          if (wasRunning)
+            notify(
+              how === 'file'
+                ? 'Cópia do acervo atual salva.'
+                : 'Download da cópia do acervo atual iniciado. Confira se o arquivo foi salvo.',
+            );
+        } catch (e) {
+          if (wasRunning && !(e instanceof SaveCancelled)) notify(errorText(e), 'error');
+        }
+      }
       setBusy('');
+      setRestoring('');
       setProgress(undefined);
     }
   };
@@ -264,10 +382,7 @@ export default function Settings({ notify }: { notify: Notify }) {
         throw new Error(
           `A cópia na nuvem aceita até ${formatBytes(CLOUD_BACKUP_LIMIT)}, e os arquivos do acervo somam ${formatBytes(bytes)}. Use “Exportar backup” para guardar tudo.`,
         );
-      setProgress({ where: 'cloud', label: 'Preparando a cópia' });
-      const { blob } = await makeBackupZip(p =>
-        setProgress({ where: 'cloud', label: 'Compactando o acervo', ...p }),
-      );
+      const { blob, summary } = await buildZip('cloud');
       if (blob.size > CLOUD_BACKUP_LIMIT)
         throw new Error(
           `A cópia na nuvem aceita até ${formatBytes(CLOUD_BACKUP_LIMIT)}, e este backup tem ${formatBytes(blob.size)}. Use “Exportar backup” para guardar tudo.`,
@@ -280,18 +395,20 @@ export default function Settings({ notify }: { notify: Notify }) {
       const upload = await cloud!.storage
         .from('compasso-backups')
         .upload(path, blob, { contentType: 'application/zip', upsert: false });
-      if (upload.error) throw upload.error;
+      if (upload.error)
+        throw new Error(cloudErrorText(upload.error, 'Não foi possível enviar a cópia para a nuvem.'));
       const insert = await cloud!
         .from('compasso_backups')
         .insert({ id, owner_id: data.user.id, path, bytes: blob.size });
-      if (insert.error) throw new Error(insert.error.message);
+      if (insert.error)
+        throw new Error(cloudErrorText(insert.error, 'Não foi possível registrar a cópia na nuvem.'));
       path = '';
-      markBackup();
-      await refreshCloud();
+      markBackup(summary.createdAt, 'cloud');
       notify('Nova cópia salva na nuvem.');
+      await refreshCloud();
     } catch (e) {
       if (path) await cloud!.storage.from('compasso-backups').remove([path]);
-      notify(errorText(e), 'error');
+      if (!(e instanceof SaveCancelled)) notify(errorText(e), 'error');
     } finally {
       setBusy('');
       setProgress(undefined);
@@ -306,6 +423,7 @@ export default function Settings({ notify }: { notify: Notify }) {
       ].filter(Boolean)
     : [];
   const stale = hasData(library) && (days === null || days > BACKUP_STALE_DAYS || (since?.files ?? 0) > 0);
+  const cloudTooBig = libraryBytes !== undefined && libraryBytes > CLOUD_BACKUP_LIMIT;
   return (
     <>
       <div className="page-heading">
@@ -328,7 +446,7 @@ export default function Settings({ notify }: { notify: Notify }) {
             <div>
               <strong>
                 {last && days !== null
-                  ? `Último backup: ${describeBackupAge(days)}`
+                  ? `${lastHow === 'download' ? 'Última exportação' : 'Último backup'}: ${describeBackupAge(days)}`
                   : 'Nenhum backup feito neste navegador'}
               </strong>
               <small>
@@ -365,6 +483,9 @@ export default function Settings({ notify }: { notify: Notify }) {
             </label>
           </div>
           {progress?.where === 'local' && <ProgressBar {...progress} />}
+          <p className="sr-only" aria-live="polite">
+            {progress?.where === 'local' ? `${progress.label}…` : ''}
+          </p>
           {!!library?.captures && (
             <p className="backup-captures">
               <AlertTriangle size={15} aria-hidden />
@@ -456,7 +577,7 @@ export default function Settings({ notify }: { notify: Notify }) {
                       setUser('');
                       setBackups([]);
                     } catch (e) {
-                      notify(errorText(e), 'error');
+                      notify(cloudErrorText(e, 'Não foi possível sair da conta. Tente de novo.'), 'error');
                     }
                   }}
                 >
@@ -464,15 +585,24 @@ export default function Settings({ notify }: { notify: Notify }) {
                   Sair
                 </button>
               </div>
-              <button className="btn" disabled={!!busy} onClick={() => void uploadCloud()}>
+              <button className="btn" disabled={!!busy || cloudTooBig} onClick={() => void uploadCloud()}>
                 <Upload size={16} />
                 {busy === 'cloud' ? 'Enviando…' : 'Criar cópia na nuvem'}
               </button>
+              {cloudTooBig && (
+                <p className="hint">
+                  Os arquivos do acervo somam {formatBytes(libraryBytes ?? 0)}, acima do limite de{' '}
+                  {formatBytes(CLOUD_BACKUP_LIMIT)} por cópia. Use “Exportar backup” para guardar tudo.
+                </p>
+              )}
               {progress?.where === 'cloud' && <ProgressBar {...progress} />}
+              <p className="sr-only" aria-live="polite">
+                {progress?.where === 'cloud' ? `${progress.label}…` : ''}
+              </p>
               {backups.map(b => (
                 <div className="simple-row" key={b.id}>
                   <div>
-                    <strong>{new Date(b.created_at).toLocaleString('pt-BR')}</strong>
+                    <strong>{formatWhen(b.created_at)}</strong>
                     <small>
                       {formatBytes(b.bytes)}
                       {b.path.endsWith('.json') ? ' · formato antigo (.json)' : ''}
@@ -482,16 +612,24 @@ export default function Settings({ notify }: { notify: Notify }) {
                     className="btn small secondary"
                     disabled={!!busy}
                     onClick={() =>
-                      void restore('cloud', async () => {
-                        const { data, error } = await cloud!.storage
-                          .from('compasso-backups')
-                          .download(b.path);
-                        if (error) throw error;
-                        return data;
-                      })
+                      void restore(
+                        'cloud',
+                        async () => {
+                          const { data, error } = await cloud!.storage
+                            .from('compasso-backups')
+                            .download(b.path);
+                          if (error)
+                            throw new Error(
+                              cloudErrorText(error, 'Não foi possível baixar esta cópia da nuvem.'),
+                            );
+                          return data;
+                        },
+                        b.id,
+                      )
                     }
                   >
-                    Restaurar
+                    {restoring === b.id ? 'Restaurando…' : 'Restaurar'}
+                    <span className="sr-only"> a cópia de {formatWhen(b.created_at)}</span>
                   </button>
                 </div>
               ))}
@@ -503,7 +641,8 @@ export default function Settings({ notify }: { notify: Notify }) {
                 setBusy('login');
                 try {
                   const { error } = await cloud!.auth.signInWithPassword({ email, password });
-                  if (error) throw error;
+                  if (error)
+                    throw new Error(cloudErrorText(error, 'Não foi possível entrar. Tente de novo.'));
                   setPassword('');
                   await refreshCloud();
                 } catch (err) {
@@ -590,13 +729,14 @@ export default function Settings({ notify }: { notify: Notify }) {
   );
 }
 
-function ProgressBar({ label, done, total }: Progress) {
+/** The visual bar; phase changes are announced by a live region that stays mounted next to it. */
+function ProgressBar({ label, done, total }: { label: string; done?: number; total?: number }) {
   const pct = total ? Math.min(100, Math.floor(((done ?? 0) / total) * 100)) : undefined;
   return (
     <div className="backup-progress">
-      <div className="backup-progress-label">
-        <span role="status">{label}…</span>
-        {pct !== undefined && <span aria-hidden>{pct}%</span>}
+      <div className="backup-progress-label" aria-hidden>
+        <span>{label}…</span>
+        {pct !== undefined && <span>{pct}%</span>}
       </div>
       <div
         className={`backup-progress-bar${pct === undefined ? ' indeterminate' : ''}`}
@@ -615,11 +755,14 @@ function ProgressBar({ label, done, total }: Progress) {
 function RestoreSummary({
   summary,
   current,
-  onExportFirst,
+  free,
+  exportFirst,
 }: {
   summary: BackupSummary;
+  /** Undefined while still counting: treated as data that would be lost. */
   current?: LibraryCounts;
-  onExportFirst: () => Promise<unknown>;
+  free?: number;
+  exportFirst?: ExportFirstOptions;
 }) {
   const items: [number, string, string][] = [
     [summary.pieces, 'peça', 'peças'],
@@ -627,8 +770,10 @@ function RestoreSummary({
     [summary.recordings, 'gravação', 'gravações'],
     [summary.sessions, 'sessão', 'sessões'],
   ];
+  const detail = current ? describeLibrary(current) : '';
   return (
-    <div className="restore-summary">
+    // Focus starts on the summary, not on the destructive button, so a stray Enter erases nothing.
+    <div className="restore-summary" tabIndex={-1} data-autofocus>
       <p>
         Backup de <strong>{formatWhen(summary.createdAt)}</strong>
         {summary.version === 1 ? ', formato antigo (.json)' : ''} · {formatBytes(summary.bytes)}
@@ -640,48 +785,108 @@ function RestoreSummary({
           </li>
         ))}
       </ul>
-      <p className="restore-warning">
+      {summary.missingFiles > 0 && (
+        <p className="restore-note">
+          {summary.missingFiles === 1
+            ? '1 arquivo não pôde ser lido quando este backup foi feito e não está nele. O item volta sem esse arquivo.'
+            : `${summary.missingFiles} arquivos não puderam ser lidos quando este backup foi feito e não estão nele. Os itens voltam sem esses arquivos.`}
+        </p>
+      )}
+      {free !== undefined && free < summary.mediaBytes * 1.1 && (
+        <p className="restore-note">
+          O navegador indica {formatBytes(free)} livres, e os arquivos deste backup somam{' '}
+          {formatBytes(summary.mediaBytes)}. A restauração pode falhar por falta de espaço; se falhar, nada
+          muda.
+        </p>
+      )}
+      <p className="error-box restore-warning">
         <AlertTriangle size={18} aria-hidden />
         <span>
-          {hasData(current)
-            ? `Tudo o que está neste navegador (${describeLibrary(current!)}) será apagado e substituído pelo backup. Não é possível desfazer.`
+          {exportFirst
+            ? `Tudo o que está neste navegador${detail ? ` (${detail})` : ''} será apagado e substituído pelo backup. Não é possível desfazer.`
             : 'Este navegador ainda não tem dados, então nada será perdido.'}
         </span>
       </p>
-      {hasData(current) && <ExportFirst run={onExportFirst} />}
+      {exportFirst && <ExportFirst {...exportFirst} />}
     </div>
   );
 }
 
-function ExportFirst({ run }: { run: () => Promise<unknown> }) {
-  const [state, setState] = useState<'idle' | 'busy' | 'done' | 'error'>('idle'),
-    [error, setError] = useState('');
-  if (state === 'done')
+function ExportFirst({ room, bytes, run }: ExportFirstOptions) {
+  const [state, setState] = useState<'idle' | 'busy' | 'error' | SaveResult>('idle'),
+    [error, setError] = useState(''),
+    [unreadable, setUnreadable] = useState<UnreadableAssetError>(),
+    [progress, setProgress] = useState<BackupProgress>();
+  const skipped = useRef<string[]>([]);
+  const status = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    // The button disappears when the copy is done; keep keyboard and VoiceOver users in place.
+    if (state === 'file' || state === 'download') status.current?.focus();
+  }, [state]);
+  if (room === 'too-large')
     return (
-      <p className="export-first-done" role="status">
-        <Check size={16} aria-hidden /> Cópia do acervo atual exportada.
+      <p className="restore-note">
+        Não dá para exportar o acervo atual antes: os arquivos somam {formatBytes(bytes)} e passam de 4 GB, o
+        limite de um backup.
       </p>
     );
+  if (state === 'file' || state === 'download')
+    return (
+      <p ref={status} tabIndex={-1} className={`export-first-done${state === 'download' ? ' pending' : ''}`}>
+        {state === 'file' ? <Check size={16} aria-hidden /> : <Download size={16} aria-hidden />}
+        {state === 'file'
+          ? 'Cópia do acervo atual salva.'
+          : 'Download da cópia iniciado. Confira se o arquivo foi salvo antes de restaurar.'}
+      </p>
+    );
+  const start = async () => {
+    if (state === 'busy') return;
+    const skip = unreadable ? [...skipped.current, ...unreadable.assets.map(a => a.id)] : skipped.current;
+    setState('busy');
+    setError('');
+    setProgress(undefined);
+    try {
+      // First, while the tap still counts as a user action.
+      const target = await pickSaveTarget(backupFileName());
+      skipped.current = skip;
+      setUnreadable(undefined);
+      setState(await run(target, setProgress, skip));
+    } catch (e) {
+      if (e instanceof SaveCancelled) return setState(unreadable ? 'error' : 'idle');
+      setUnreadable(e instanceof UnreadableAssetError ? e : undefined);
+      setError(errorText(e));
+      setState('error');
+    }
+  };
   return (
     <div className="export-first">
+      {room === 'tight' && state === 'idle' && (
+        <p className="restore-note">
+          Pouco espaço livre: a cópia (cerca de {formatBytes(bytes)}) pode falhar no meio, sem prejudicar seus
+          dados.
+        </p>
+      )}
       <button
         type="button"
         className="btn secondary"
-        disabled={state === 'busy'}
-        onClick={async () => {
-          setState('busy');
-          try {
-            await run();
-            setState('done');
-          } catch (e) {
-            setError(errorText(e));
-            setState('error');
-          }
-        }}
+        aria-disabled={state === 'busy'}
+        onClick={() => void start()}
       >
-        <Download size={16} />
-        {state === 'busy' ? 'Exportando o acervo atual…' : 'Exportar o acervo atual antes'}
+        <Download size={16} aria-hidden />
+        {state === 'busy'
+          ? 'Exportando o acervo atual…'
+          : unreadable
+            ? unreadable.assets.length === 1
+              ? 'Exportar sem este arquivo'
+              : 'Exportar sem esses arquivos'
+            : state === 'error'
+              ? 'Tentar exportar de novo'
+              : 'Exportar o acervo atual antes'}
       </button>
+      {state === 'busy' && progress && <ProgressBar label="Exportando o acervo atual" {...progress} />}
+      <p className="sr-only" aria-live="polite">
+        {state === 'busy' ? 'Exportando o acervo atual…' : ''}
+      </p>
       {state === 'error' && (
         <p role="alert" className="error-box">
           {error}
