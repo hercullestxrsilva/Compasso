@@ -42,6 +42,59 @@ const resultSchema = z.object({
     .max(30),
   questions: z.array(z.string().max(1000)).max(20),
 });
+const MAX_AI_CALLS = 2;
+const timestampMarker = /\[\d+:\d{2}(?::\d{2})?\]/y;
+/**
+ * Folds text for evidence matching: compatibility forms (NFKC/NFKD), case, accents, quotes, punctuation and
+ * spacing are ignored and [m:ss] markers are skipped. `positions[i]` is the index in `text` of folded char i.
+ */
+export function foldForMatch(text) {
+  const chars = [],
+    positions = [];
+  const separate = at => {
+    if (chars.length && chars.at(-1) !== ' ') {
+      chars.push(' ');
+      positions.push(at);
+    }
+  };
+  let i = 0;
+  while (i < text.length) {
+    timestampMarker.lastIndex = i;
+    if (timestampMarker.test(text)) {
+      separate(i);
+      i = timestampMarker.lastIndex;
+      continue;
+    }
+    const char = String.fromCodePoint(text.codePointAt(i));
+    const folded = char.normalize('NFKD').toLowerCase().normalize('NFKD').replace(/\p{M}/gu, '');
+    for (const c of folded) {
+      if (!/[\p{L}\p{N}]/u.test(c)) separate(i);
+      else
+        for (const unit of c.split('')) {
+          chars.push(unit);
+          positions.push(i);
+        }
+    }
+    i += char.length;
+  }
+  if (chars.at(-1) === ' ') {
+    chars.pop();
+    positions.pop();
+  }
+  return { text: chars.join(''), positions };
+}
+/** Index in the transcript where the evidence starts (whole words, folded), or -1. */
+export function findEvidence(transcript, evidence, folded = foldForMatch(transcript)) {
+  const needle = foldForMatch(evidence).text;
+  if (needle.replaceAll(' ', '').length < 3) return -1;
+  const at = ` ${folded.text} `.indexOf(` ${needle} `);
+  return at < 0 ? -1 : folded.positions[at];
+}
+/** Seconds of the last [m:ss] marker before `index`, or null. */
+export function timestampBefore(transcript, index) {
+  const last = [...transcript.slice(0, index).matchAll(/\[(\d+):(\d{2})\]/g)].at(-1);
+  return last ? Number(last[1]) * 60 + Number(last[2]) : null;
+}
 const isLoopback = value => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(value);
 const isLocalHost = value => {
   try {
@@ -50,16 +103,31 @@ const isLocalHost = value => {
     return false;
   }
 };
-export async function createApp({ env = process.env, upstream = fetch, staticRoot = resolve('dist') } = {}) {
+/** `authClient` replaces the Supabase client (tests); it needs `auth.getUser(token)`. */
+export async function createApp({
+  env = process.env,
+  upstream = fetch,
+  staticRoot = resolve('dist'),
+  authClient,
+} = {}) {
   const app = Fastify({ logger: false, bodyLimit: 512 * 1024, requestTimeout: 250000 });
   await app.register(multipart, { limits: { fileSize: 24 * 1024 * 1024, files: 1, fields: 2, parts: 3 } });
-  await app.register(rateLimit, { global: false, max: 30, timeWindow: '1 minute' });
+  await app.register(rateLimit, {
+    global: false,
+    max: 30,
+    timeWindow: '1 minute',
+    errorResponseBuilder: (request, context) => ({
+      statusCode: 429,
+      message: `Muitas solicitações seguidas. Tente novamente em ${Math.max(1, Math.ceil(context.ttl / 1000))} s.`,
+    }),
+  });
   const auth =
-    env.SUPABASE_URL && env.SUPABASE_ANON_KEY
+    authClient ??
+    (env.SUPABASE_URL && env.SUPABASE_ANON_KEY
       ? createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
           auth: { persistSession: false, autoRefreshToken: false },
         })
-      : null;
+      : null);
   let inflight = 0;
   app.get('/api/status', async () => ({
     configured: Boolean(env.OPENAI_API_KEY),
@@ -85,19 +153,34 @@ export async function createApp({ env = process.env, upstream = fetch, staticRoo
         error:
           'O serviço de IA ainda não foi configurado nesta instalação. Suas notas e transcrições manuais continuam funcionando.',
       });
-    if (inflight >= 2)
+    // Check and reserve in the same synchronous step, so concurrent requests cannot both pass the check.
+    if (inflight >= MAX_AI_CALLS)
       return reply
         .code(429)
         .send({ error: 'O serviço está processando outras aulas. Tente novamente em instantes.' });
+    inflight++;
+    const slot = { released: false, controller: new AbortController() };
+    slot.release = () => {
+      if (slot.released) return;
+      slot.released = true;
+      inflight--;
+    };
+    request.aiSlot = slot;
+    // 'close' fires for every response; unfinished means the client went away, so stop the provider call too.
+    reply.raw.once('close', () => {
+      if (!reply.raw.writableFinished) slot.controller.abort();
+      slot.release();
+    });
   }
-  async function api(path, body, headers = {}) {
+  const release = request => request.aiSlot?.release();
+  async function api(request, path, body, headers = {}) {
     let response;
     try {
       response = await upstream(`https://api.openai.com/v1/${path}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}`, ...headers },
         body,
-        signal: AbortSignal.timeout(210000),
+        signal: AbortSignal.any([AbortSignal.timeout(210000), request.aiSlot.controller.signal]),
       });
     } catch {
       const error = new Error('O provedor de IA demorou ou não respondeu. Tente novamente.');
@@ -117,9 +200,9 @@ export async function createApp({ env = process.env, upstream = fetch, staticRoo
   }
   app.post(
     '/api/transcribe',
-    { preHandler: authorize, config: { rateLimit: { max: 4, timeWindow: '1 minute' } } },
+    // Long lessons are sent as several sequential parts, so allow a few more calls per minute.
+    { preHandler: authorize, config: { rateLimit: { max: 8, timeWindow: '1 minute' } } },
     async (request, reply) => {
-      inflight++;
       try {
         const file = await request.file();
         if (!file) return reply.code(400).send({ error: 'Envie um arquivo de áudio.' });
@@ -137,7 +220,7 @@ export async function createApp({ env = process.env, upstream = fetch, staticRoo
         form.append('model', model);
         form.append('language', 'pt');
         form.append('response_format', model === 'whisper-1' ? 'verbose_json' : 'json');
-        const result = await api('audio/transcriptions', form);
+        const result = await api(request, 'audio/transcriptions', form);
         return {
           text: result.text ?? '',
           segments: Array.isArray(result.segments)
@@ -145,7 +228,7 @@ export async function createApp({ env = process.env, upstream = fetch, staticRoo
             : [],
         };
       } finally {
-        inflight--;
+        release(request);
       }
     },
   );
@@ -153,14 +236,14 @@ export async function createApp({ env = process.env, upstream = fetch, staticRoo
     '/api/summarize',
     { preHandler: authorize, config: { rateLimit: { max: 6, timeWindow: '1 minute' } } },
     async (request, reply) => {
-      const parsed = summaryInput.safeParse(request.body);
-      if (!parsed.success)
-        return reply
-          .code(400)
-          .send({ error: 'Envie um título e uma transcrição entre 10 e 100.000 caracteres.' });
-      inflight++;
       try {
+        const parsed = summaryInput.safeParse(request.body);
+        if (!parsed.success)
+          return reply
+            .code(400)
+            .send({ error: 'Envie um título e uma transcrição entre 10 e 100.000 caracteres.' });
         const result = await api(
+          request,
           'responses',
           JSON.stringify({
             model: env.OPENAI_SUMMARY_MODEL || 'gpt-4.1-mini',
@@ -197,18 +280,16 @@ export async function createApp({ env = process.env, upstream = fetch, staticRoo
             .code(502)
             .send({ error: 'A análise retornou um formato inesperado. Tente novamente.' });
         }
-        const transcript = parsed.data.transcript;
-        review.tasks = review.tasks
-          .filter(task => transcript.includes(task.evidence))
-          .map(task => {
-            const before = transcript.slice(0, transcript.indexOf(task.evidence));
-            const matches = [...before.matchAll(/\[(\d+):(\d{2})\]/g)];
-            const last = matches.at(-1);
-            return { ...task, timestamp: last ? Number(last[1]) * 60 + Number(last[2]) : null };
-          });
+        // Quotes rarely come back byte-identical (accents, quotes, spacing), so match on folded text.
+        const transcript = parsed.data.transcript,
+          folded = foldForMatch(transcript);
+        review.tasks = review.tasks.flatMap(task => {
+          const at = findEvidence(transcript, task.evidence, folded);
+          return at < 0 ? [] : [{ ...task, timestamp: timestampBefore(transcript, at) }];
+        });
         return review;
       } finally {
-        inflight--;
+        release(request);
       }
     },
   );
