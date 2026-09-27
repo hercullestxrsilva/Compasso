@@ -2,11 +2,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   clampZoom,
   fitPageZoom,
+  forgetPieceView,
   forgetViewState,
   isEditableTarget,
+  loadLastScore,
   loadViewState,
   pageKeyAction,
   readFlag,
+  saveLastScore,
   saveViewState,
   writeFlag,
 } from '../src/score-view';
@@ -53,6 +56,17 @@ describe('score view state', () => {
     expect(() => saveViewState('x', { page: 1, zoom: 1, fit: 'width' })).not.toThrow();
     expect(readFlag('flag')).toBeUndefined();
     expect(() => writeFlag('flag', true)).not.toThrow();
+  });
+
+  it('remembers the last opened version of a piece and forgets deleted pieces', () => {
+    vi.stubGlobal('localStorage', memoryStorage());
+    expect(loadLastScore('piece')).toBe('');
+    saveLastScore('piece', 'score-2');
+    saveViewState('score-2', { page: 4, zoom: 1, fit: 'width' });
+    expect(loadLastScore('piece')).toBe('score-2');
+    forgetPieceView('piece', ['score-2']);
+    expect(loadLastScore('piece')).toBe('');
+    expect(loadViewState('score-2')).toEqual({});
   });
 
   it('stores on/off preferences', () => {

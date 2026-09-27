@@ -56,6 +56,35 @@ export function forgetViewState(scoreId: string) {
   }
 }
 
+const lastScoreKey = (pieceId: string) => `compasso:piece-score:${pieceId}`;
+
+/** The score version last opened for a piece, so the piece reopens on it. */
+export function loadLastScore(pieceId: string) {
+  try {
+    return localStorage.getItem(lastScoreKey(pieceId)) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function saveLastScore(pieceId: string, scoreId: string) {
+  try {
+    localStorage.setItem(lastScoreKey(pieceId), scoreId);
+  } catch {
+    /* the default version is shown next time */
+  }
+}
+
+/** Removes what the viewer remembered about a deleted piece and its scores. */
+export function forgetPieceView(pieceId: string, scoreIds: string[]) {
+  try {
+    localStorage.removeItem(lastScoreKey(pieceId));
+  } catch {
+    /* nothing to clean */
+  }
+  for (const id of scoreIds) forgetViewState(id);
+}
+
 export const PENCIL_ONLY_KEY = 'compasso:pencil-only';
 export const SHOW_SEGMENTS_KEY = 'compasso:show-segments';
 

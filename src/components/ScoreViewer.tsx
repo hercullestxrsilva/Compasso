@@ -1,32 +1,135 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   ChevronLeft,
   ChevronRight,
+  Hand,
+  Move,
   PenLine,
   Highlighter,
   Type,
-  MousePointer2,
-  Scan,
+  SquareDashed,
+  Eraser,
   Undo2,
   Redo2,
   ZoomIn,
   ZoomOut,
   Download,
-  Eye,
-  EyeOff,
-  Eraser,
   Maximize2,
   Minimize2,
-  Move,
+  MoreHorizontal,
+  MoveHorizontal,
+  RectangleVertical,
+  Trash2,
+  Plus,
 } from 'lucide-react';
 import { db } from '../db';
 import { uid, now, type Score, type Annotation, type Point, type Region } from '../domain';
 import { Modal, Field, ErrorBox, download, errorText, type Notify } from './common';
-import { renderPdfPage } from '../pdf/render';
-import { movePoints } from '../annotations';
+import { PdfRenderer } from '../pdf/render';
+import {
+  focusCrop,
+  movePoints,
+  overlayPath,
+  overlayRect,
+  overlayViewBox,
+  pointFromClient,
+  sameRegion,
+  toOverlay,
+  type FocusContext,
+} from '../annotations';
+import { historyFor, type AnnotationOp, type AnnotationStore } from '../annotation-history';
+import {
+  clampZoom,
+  fitPageZoom,
+  isEditableTarget,
+  loadViewState,
+  pageKeyAction,
+  readFlag,
+  saveViewState,
+  writeFlag,
+  MAX_ZOOM,
+  MIN_ZOOM,
+  PENCIL_ONLY_KEY,
+  SHOW_SEGMENTS_KEY,
+  type FitMode,
+  type PageKeyAction,
+} from '../score-view';
+import '../styles/score.css';
+
 type Tool = 'navigate' | 'select' | 'pen' | 'highlight' | 'text' | 'region' | 'erase';
-const layers = ['Minhas notas', 'Professor', 'Dedilhado'];
+const tools = [
+  ['navigate', Hand, 'Navegar', 'Navegar: ler e rolar a partitura'],
+  ['select', Move, 'Mover', 'Selecionar e mover anotações'],
+  ['pen', PenLine, 'Caneta', 'Caneta'],
+  ['highlight', Highlighter, 'Marca-texto', 'Marca-texto'],
+  ['text', Type, 'Texto', 'Texto'],
+  ['region', SquareDashed, 'Trecho', 'Marcar trecho para praticar'],
+  ['erase', Eraser, 'Borracha', 'Borracha: apagar anotação da camada ativa'],
+] as const;
+const layers = [
+  { name: 'Minhas notas', color: '#087e8b' },
+  { name: 'Professor', color: '#c0392b' },
+  { name: 'Dedilhado', color: '#1f5fbf' },
+];
+const swatches = [
+  ['#087e8b', 'Verde-azulado'],
+  ['#c0392b', 'Vermelho'],
+  ['#1f5fbf', 'Azul'],
+  ['#1d2a2e', 'Grafite'],
+  ['#e0a100', 'Amarelo'],
+] as const;
+const kindLabels: Record<Annotation['kind'], string> = {
+  pen: 'Traço',
+  highlight: 'Marca-texto',
+  text: 'Texto',
+};
+
+const annotationStore: AnnotationStore = {
+  put: annotation => db.annotations.put(annotation),
+  delete: id => db.annotations.delete(id),
+  update: (id, changes) => db.annotations.update(id, changes),
+};
+
+interface Anchor {
+  /** Position under the fingers or cursor as a fraction of the sheet, kept in place while zooming. */
+  fx: number;
+  fy: number;
+  clientX: number;
+  clientY: number;
+}
+
+/**
+ * Makes everything outside the full-screen viewer inert, so keyboard focus cannot reach controls hidden
+ * behind it (the CSS fallback used on iPad does not do that by itself). Returns the undo function.
+ */
+function inertOutside(element: HTMLElement) {
+  const changed: HTMLElement[] = [];
+  for (
+    let node: HTMLElement = element;
+    node.parentElement && node !== document.body;
+    node = node.parentElement
+  ) {
+    for (const sibling of Array.from(node.parentElement.children)) {
+      if (sibling === node || !(sibling instanceof HTMLElement) || sibling.inert) continue;
+      if (sibling instanceof HTMLDialogElement || sibling instanceof HTMLScriptElement) continue;
+      sibling.inert = true;
+      changed.push(sibling);
+    }
+  }
+  return () => {
+    for (const element of changed) element.inert = false;
+  };
+}
+
 export interface ScoreViewerProps {
   score: Score;
   onRegion: (region: Region) => void;
@@ -37,6 +140,8 @@ export interface ScoreViewerProps {
   /** Marked trechos drawn on the score; tapping one calls onSegmentClick. */
   segments?: { id: string; title: string; regions: Region[] }[];
   onSegmentClick?: (segmentId: string) => void;
+  /** Selects the region tool each time this number changes (e.g. "Marcar na partitura" on a trecho). */
+  requestRegion?: number;
 }
 export default function ScoreViewer({
   score,
@@ -44,51 +149,91 @@ export default function ScoreViewer({
   targetRegion,
   notify,
   fullscreenOverlay,
+  segments,
+  onSegmentClick,
+  requestRegion,
 }: ScoreViewerProps) {
   const asset = useLiveQuery(() => db.assets.get(score.assetId), [score.assetId]);
-  const [page, setPage] = useState(1),
-    [pages, setPages] = useState(1),
-    [tool, setTool] = useState<Tool>('navigate');
-  const [layer, setLayer] = useState(layers[0]),
-    [color, setColor] = useState('#087e8b'),
+  const isPdf = !!asset && (asset.mime === 'application/pdf' || asset.name.toLowerCase().endsWith('.pdf'));
+  const [initial] = useState(() => loadViewState(score.id));
+  const [viewFor, setViewFor] = useState(score.id);
+  const [page, setPage] = useState(initial.page ?? 1),
+    [pages, setPages] = useState(0),
+    [ratio, setRatio] = useState(1.414);
+  const [zoom, setZoom] = useState(initial.zoom ?? 1),
+    [fit, setFit] = useState<FitMode | null>(initial.fit === undefined ? 'width' : initial.fit),
+    [box, setBox] = useState({ w: 0, h: 0 }),
+    [gesture, setGesture] = useState<{ scale: number; x: number; y: number } | null>(null);
+  const [tool, setTool] = useState<Tool>('navigate'),
+    [layer, setLayer] = useState(layers[0].name),
+    [color, setColor] = useState(layers[0].color),
     [hiddenLayers, setHiddenLayers] = useState<string[]>([]);
-  const [zoom, setZoom] = useState(1),
-    [ratio, setRatio] = useState(1.414),
-    [width, setWidth] = useState(700),
-    [error, setError] = useState(''),
-    [loading, setLoading] = useState(false);
+  const [error, setError] = useState(''),
+    [loading, setLoading] = useState(false),
+    [attempt, setAttempt] = useState(0);
   const [draft, setDraft] = useState<Point[]>([]),
-    [redo, setRedo] = useState<Annotation[]>([]),
-    [textPoint, setTextPoint] = useState<Point>(),
+    [textPoint, setTextPoint] = useState<{ point: Point; page: number }>(),
     [text, setText] = useState(''),
     [fontSize, setFontSize] = useState(20);
   const [selectedId, setSelectedId] = useState<string | null>(null),
     [movePreview, setMovePreview] = useState<{ id: string; points: Point[] } | null>(null),
-    [editingText, setEditingText] = useState<string | null>(null);
+    [editingText, setEditingText] = useState<Annotation | null>(null);
   const [focus, setFocus] = useState(false),
-    [exporting, setExporting] = useState(false);
-  const [fullscreen, setFullscreen] = useState(false);
-  const [attempt, setAttempt] = useState(0);
+    [focusContext, setFocusContext] = useState<FocusContext>('lead-in');
+  const [exporting, setExporting] = useState(false),
+    [fullscreen, setFullscreen] = useState(false),
+    [menuOpen, setMenuOpen] = useState(false);
+  const [pencilOnly, setPencilOnly] = useState(() => readFlag(PENCIL_ONLY_KEY) ?? false),
+    [pencilOffer, setPencilOffer] = useState(false),
+    [showSegments, setShowSegments] = useState(() => readFlag(SHOW_SEGMENTS_KEY) ?? true);
   const viewer = useRef<HTMLDivElement>(null),
     canvas = useRef<HTMLCanvasElement>(null),
     container = useRef<HTMLDivElement>(null),
+    sheet = useRef<HTMLDivElement>(null),
     svg = useRef<SVGSVGElement>(null),
-    drawing = useRef<Point[]>([]);
-  const pointer = useRef<number | null>(null);
-  const moving = useRef<{ pointerId: number; annotation: Annotation; start: Point } | null>(null);
+    menu = useRef<HTMLDivElement>(null),
+    menuButton = useRef<HTMLButtonElement>(null),
+    fullscreenButton = useRef<HTMLButtonElement>(null);
+  const drawing = useRef<Point[]>([]),
+    pointer = useRef<number | null>(null),
+    moving = useRef<{ pointerId: number; annotation: Annotation; start: Point } | null>(null),
+    penDown = useRef(false),
+    pinching = useRef(false),
+    anchor = useRef<Anchor | null>(null),
+    renderer = useRef<{ key: string; renderer: PdfRenderer } | null>(null);
+  const history = historyFor(score.id);
+  useSyncExternalStore(history.subscribe, () => history.version);
   const annotations =
     useLiveQuery(
       () => db.annotations.where('[scoreId+page]').equals([score.id, page]).toArray(),
       [score.id, page],
     ) ?? [];
-  useEffect(() => {
-    setPage(1);
-    setRedo([]);
-    setZoom(1);
+
+  // A different score in the same viewer (Practice switches segments) starts from its own saved view.
+  if (viewFor !== score.id) {
+    const saved = loadViewState(score.id);
+    setViewFor(score.id);
+    setPage(saved.page ?? 1);
+    setZoom(saved.zoom ?? 1);
+    setFit(saved.fit === undefined ? 'width' : saved.fit);
+    setPages(0);
     setError('');
     setSelectedId(null);
     setMovePreview(null);
-  }, [score.id]);
+    setFocus(false);
+  }
+
+  const effectiveZoom = fit === 'width' ? 1 : fit === 'page' ? fitPageZoom(box.w, box.h, ratio) : zoom;
+  const renderWidth = Math.max(1, Math.round(box.w * effectiveZoom));
+  const region = targetRegion?.page === page ? targetRegion : undefined;
+  // Focus shows a crop of the page; the page itself is rendered larger so the crop stays sharp.
+  const crop = focus && region ? focusCrop(region, focusContext) : null;
+  const pageWidth = Math.round(crop ? renderWidth / crop.w : renderWidth);
+  /** Overlay units per CSS pixel, to keep labels and hit areas the same size at any zoom. */
+  const unit = 1000 / pageWidth;
+  const sheetHeight = crop ? (renderWidth * ratio * crop.h) / crop.w : renderWidth * ratio;
+
+  useEffect(() => saveViewState(score.id, { page, zoom, fit }), [score.id, page, zoom, fit]);
   useEffect(() => {
     setSelectedId(null);
     setMovePreview(null);
@@ -100,106 +245,438 @@ export default function ScoreViewer({
       setFocus(true);
     }
   }, [targetRegion]);
+  const regionRequest = useRef(requestRegion);
   useEffect(() => {
-    if (!container.current) return;
-    const observer = new ResizeObserver(([entry]) => setWidth(Math.max(240, entry.contentRect.width - 32)));
-    observer.observe(container.current);
-    return () => observer.disconnect();
+    if (requestRegion === regionRequest.current) return;
+    regionRequest.current = requestRegion;
+    setTool('region');
+    setFocus(false);
+  }, [requestRegion]);
+
+  // Measure the visible area. Resizes are debounced so dragging a window does not re-render every frame.
+  useLayoutEffect(() => {
+    const element = container.current;
+    if (!element) return;
+    const measure = () => {
+      const style = getComputedStyle(element);
+      const padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+      const padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+      const maxHeight = parseFloat(style.maxHeight);
+      const height = Number.isFinite(maxHeight)
+        ? Math.min(maxHeight, window.innerHeight)
+        : element.clientHeight;
+      const w = Math.max(240, Math.floor(element.clientWidth - padX));
+      const h = Math.max(160, Math.floor(height - padY));
+      setBox(current => (current.w === w && current.h === h ? current : { w, h }));
+    };
+    measure();
+    let timer: number | undefined;
+    const schedule = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(measure, 150);
+    };
+    const observer = new ResizeObserver(schedule);
+    observer.observe(element);
+    window.addEventListener('resize', schedule);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', schedule);
+      window.clearTimeout(timer);
+    };
   }, []);
+
+  useEffect(
+    () => () => {
+      renderer.current?.renderer.destroy();
+      renderer.current = null;
+    },
+    [],
+  );
   useEffect(() => {
-    if (!fullscreen) return;
+    if (!asset || !isPdf || !canvas.current || !box.w) return;
+    const key = `${asset.id}:${attempt}`;
+    if (renderer.current?.key !== key) {
+      renderer.current?.renderer.destroy();
+      renderer.current = { key, renderer: new PdfRenderer(asset.blob) };
+    }
+    const pdf = renderer.current.renderer;
+    const controller = new AbortController();
+    setLoading(true);
+    setError('');
+    pdf.render({ canvas: canvas.current, page, width: pageWidth, zoom: 1, signal: controller.signal }).then(
+      result => {
+        if (controller.signal.aborted) return;
+        setPages(result.pages);
+        setRatio(result.ratio);
+        setLoading(false);
+        if (page > result.pages) setPage(result.pages);
+        else if (page < result.pages) pdf.prefetch({ page: page + 1, width: pageWidth, zoom: 1 });
+      },
+      err => {
+        if (controller.signal.aborted) return;
+        setError(`Não foi possível exibir esta página. ${errorText(err)}`);
+        setLoading(false);
+      },
+    );
+    return () => controller.abort();
+  }, [asset, isPdf, page, pageWidth, attempt, box.w]);
+  useEffect(() => {
+    if (!asset || isPdf || !canvas.current) return;
+    // Images are drawn once at full resolution; zoom only changes their CSS size.
+    const target = canvas.current;
+    const url = URL.createObjectURL(asset.blob);
+    const image = new Image();
+    let cancelled = false;
+    image.src = url;
+    setLoading(true);
+    setError('');
+    image.decode().then(
+      () => {
+        if (cancelled) return;
+        target.width = image.naturalWidth;
+        target.height = image.naturalHeight;
+        target.getContext('2d')?.drawImage(image, 0, 0);
+        setPages(1);
+        setPage(1);
+        setRatio(image.naturalHeight / image.naturalWidth);
+        setLoading(false);
+      },
+      err => {
+        if (cancelled) return;
+        setError(`Não foi possível exibir esta imagem. ${errorText(err)}`);
+        setLoading(false);
+      },
+    );
+    return () => {
+      cancelled = true;
+      URL.revokeObjectURL(url);
+    };
+  }, [asset, isPdf, attempt]);
+
+  // Keep the point under the fingers or cursor in place after a zoom.
+  useLayoutEffect(() => {
+    const pin = anchor.current,
+      element = container.current,
+      target = sheet.current;
+    anchor.current = null;
+    if (!pin || !element || !target) return;
+    const rect = target.getBoundingClientRect();
+    element.scrollLeft += rect.left + pin.fx * rect.width - pin.clientX;
+    element.scrollTop += rect.top + pin.fy * rect.height - pin.clientY;
+  }, [renderWidth]);
+
+  const anchorAt = (clientX: number, clientY: number): Anchor | null => {
+    const rect = sheet.current?.getBoundingClientRect();
+    if (!rect?.width || !rect.height) return null;
+    return {
+      fx: (clientX - rect.left) / rect.width,
+      fy: (clientY - rect.top) / rect.height,
+      clientX,
+      clientY,
+    };
+  };
+  const applyZoom = (next: number, pin: Anchor | null) => {
+    const value = clampZoom(next);
+    setFit(null);
+    setZoom(value);
+    anchor.current = Math.round(box.w * value) === renderWidth ? null : pin;
+  };
+  const stepZoom = (direction: 1 | -1) => {
+    const rect = container.current?.getBoundingClientRect();
+    const pin = rect
+      ? anchorAt(
+          rect.left + rect.width / 2,
+          rect.top + Math.max(0, Math.min(rect.height, window.innerHeight - rect.top)) / 2,
+        )
+      : null;
+    applyZoom(effectiveZoom * (direction > 0 ? 1.25 : 0.8), pin);
+  };
+  const chooseFit = (mode: FitMode) => {
+    setFit(mode);
+    anchor.current = null;
+    container.current?.scrollTo({ top: 0, left: 0 });
+  };
+
+  const live = useRef({ effectiveZoom, tool, pencilOnly, applyZoom });
+  useEffect(() => {
+    live.current = { effectiveZoom, tool, pencilOnly, applyZoom };
+  });
+
+  // Pinch (two fingers) and ctrl+wheel / trackpad pinch zoom the score itself, not the whole page.
+  useEffect(() => {
+    const element = container.current;
+    if (!element) return;
+    let pinch: { distance: number; base: number; pin: Anchor; scale: number } | null = null;
+    let wheel: { base: number; pin: Anchor; scale: number; timer: number } | null = null;
+    const pinFor = (clientX: number, clientY: number) => {
+      const rect = sheet.current?.getBoundingClientRect();
+      if (!rect?.width || !rect.height) return null;
+      return {
+        fx: (clientX - rect.left) / rect.width,
+        fy: (clientY - rect.top) / rect.height,
+        clientX,
+        clientY,
+      };
+    };
+    const limit = (base: number, scale: number) => clampZoom(base * scale) / base;
+    const spread = (touches: TouchList) =>
+      Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+    const onTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 2) return;
+      const pin = pinFor(
+        (event.touches[0].clientX + event.touches[1].clientX) / 2,
+        (event.touches[0].clientY + event.touches[1].clientY) / 2,
+      );
+      if (!pin) return;
+      // A second finger turns a stroke that just started into a pinch.
+      pinching.current = true;
+      pointer.current = null;
+      drawing.current = [];
+      setDraft([]);
+      if (moving.current) {
+        moving.current = null;
+        setMovePreview(null);
+      }
+      pinch = {
+        distance: Math.max(1, spread(event.touches)),
+        base: live.current.effectiveZoom,
+        pin,
+        scale: 1,
+      };
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      if (!pinch || event.touches.length !== 2) return;
+      if (event.cancelable) event.preventDefault();
+      pinch.scale = limit(pinch.base, spread(event.touches) / pinch.distance);
+      setGesture({ scale: pinch.scale, x: pinch.pin.fx, y: pinch.pin.fy });
+    };
+    const onTouchEnd = (event: TouchEvent) => {
+      if (event.touches.length === 0) pinching.current = false;
+      if (!pinch || event.touches.length >= 2) return;
+      const done = pinch;
+      pinch = null;
+      setGesture(null);
+      if (Math.abs(done.scale - 1) > 0.02) live.current.applyZoom(done.base * done.scale, done.pin);
+    };
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      if (!wheel) {
+        const pin = pinFor(event.clientX, event.clientY);
+        if (!pin) return;
+        wheel = { base: live.current.effectiveZoom, pin, scale: 1, timer: 0 };
+      }
+      const delta = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY;
+      wheel.scale = limit(wheel.base, wheel.scale * Math.exp(-delta * 0.003));
+      setGesture({ scale: wheel.scale, x: wheel.pin.fx, y: wheel.pin.fy });
+      window.clearTimeout(wheel.timer);
+      wheel.timer = window.setTimeout(() => {
+        const done = wheel;
+        wheel = null;
+        setGesture(null);
+        if (done) live.current.applyZoom(done.base * done.scale, done.pin);
+      }, 200);
+    };
+    // Safari's own page zoom would fight the score zoom.
+    const stopNativeZoom = (event: Event) => event.preventDefault();
+    element.addEventListener('touchstart', onTouchStart, { passive: true });
+    element.addEventListener('touchmove', onTouchMove, { passive: false });
+    element.addEventListener('touchend', onTouchEnd);
+    element.addEventListener('touchcancel', onTouchEnd);
+    element.addEventListener('wheel', onWheel, { passive: false });
+    element.addEventListener('gesturestart', stopNativeZoom);
+    element.addEventListener('gesturechange', stopNativeZoom);
+    return () => {
+      element.removeEventListener('touchstart', onTouchStart);
+      element.removeEventListener('touchmove', onTouchMove);
+      element.removeEventListener('touchend', onTouchEnd);
+      element.removeEventListener('touchcancel', onTouchEnd);
+      element.removeEventListener('wheel', onWheel);
+      element.removeEventListener('gesturestart', stopNativeZoom);
+      element.removeEventListener('gesturechange', stopNativeZoom);
+      if (wheel) window.clearTimeout(wheel.timer);
+    };
+  }, []);
+
+  // In "Só Apple Pencil" mode fingers may scroll; the pencil must not, or its strokes would pan the page.
+  useEffect(() => {
+    const element = svg.current;
+    if (!element) return;
+    const onTouch = (event: TouchEvent) => {
+      if (live.current.tool === 'navigate' || !live.current.pencilOnly) return;
+      const stylus =
+        penDown.current ||
+        Array.from(event.changedTouches).some(
+          touch => (touch as Touch & { touchType?: string }).touchType === 'stylus',
+        );
+      if (stylus && event.cancelable) event.preventDefault();
+    };
+    element.addEventListener('touchstart', onTouch, { passive: false });
+    element.addEventListener('touchmove', onTouch, { passive: false });
+    return () => {
+      element.removeEventListener('touchstart', onTouch);
+      element.removeEventListener('touchmove', onTouch);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!fullscreen || !viewer.current) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    const restoreInert = inertOutside(viewer.current);
     const onFullscreenChange = () => {
       if (!document.fullscreenElement) setFullscreen(false);
     };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        if (document.fullscreenElement === viewer.current) void document.exitFullscreen().catch(() => {});
-        setFullscreen(false);
-      }
-    };
     document.addEventListener('fullscreenchange', onFullscreenChange);
-    window.addEventListener('keydown', onKeyDown, true);
     return () => {
       document.body.style.overflow = previousOverflow;
+      restoreInert();
       document.removeEventListener('fullscreenchange', onFullscreenChange);
-      window.removeEventListener('keydown', onKeyDown, true);
     };
   }, [fullscreen]);
   useEffect(() => {
-    if (!asset || !canvas.current) return;
-    const controller = new AbortController();
-    let cleanup: (() => void) | undefined;
-    setLoading(true);
-    setError('');
-    (async () => {
-      try {
-        const target = canvas.current!;
-        if (asset.mime === 'application/pdf' || asset.name.toLowerCase().endsWith('.pdf')) {
-          const rendered = await renderPdfPage({
-            blob: asset.blob,
-            canvas: target,
-            page,
-            width,
-            zoom,
-            signal: controller.signal,
-          });
-          if (controller.signal.aborted) return;
-          setPages(rendered.pages);
-          setRatio(rendered.ratio);
-        } else {
-          const url = URL.createObjectURL(asset.blob);
-          cleanup = () => URL.revokeObjectURL(url);
-          const image = new Image();
-          image.src = url;
-          await image.decode();
-          if (controller.signal.aborted) return;
-          setPages(1);
-          setRatio(image.height / image.width);
-          target.width = image.width;
-          target.height = image.height;
-          target.getContext('2d')!.drawImage(image, 0, 0);
-        }
-      } catch (err) {
-        if (!controller.signal.aborted) setError(`Não foi possível exibir esta página. ${errorText(err)}`);
-      } finally {
-        if (!controller.signal.aborted) setLoading(false);
+    if (!fullscreen && !menuOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      // An open dialog handles its own Escape; closing it must not also leave full screen.
+      if (event.key !== 'Escape' || document.querySelector('dialog[open]')) return;
+      event.preventDefault();
+      if (menuOpen) {
+        setMenuOpen(false);
+        menuButton.current?.focus();
+        return;
       }
-    })();
-    return () => {
-      controller.abort();
-      cleanup?.();
+      if (document.fullscreenElement === viewer.current) void document.exitFullscreen().catch(() => {});
+      setFullscreen(false);
     };
-  }, [asset, page, width, zoom, attempt]);
-  const save = async (points: Point[], kind: Annotation['kind'], value?: string, size?: number) => {
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [fullscreen, menuOpen]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    menu.current?.querySelector<HTMLElement>('button:not(:disabled), input')?.focus();
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (menu.current?.contains(target) || menuButton.current?.contains(target)) return;
+      setMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+  }, [menuOpen]);
+
+  const changePage = (next: number, at: 'top' | 'bottom' = 'top') => {
+    setPage(next);
+    setFocus(false);
+    const element = container.current;
+    if (!element) return;
+    element.scrollTo({ top: 0, left: 0 });
+    if (at === 'bottom')
+      requestAnimationFrame(() => element.scrollTo({ top: element.scrollHeight, left: 0 }));
+  };
+  const turnPage = ({ direction, scrollFirst }: PageKeyAction) => {
+    const element = container.current;
+    if (scrollFirst && element && !focus) {
+      // A zoomed page is read top to bottom before the pedal turns it.
+      const step = Math.max(80, element.clientHeight * 0.85);
+      if (direction > 0 && element.scrollTop + element.clientHeight < element.scrollHeight - 4)
+        return element.scrollBy({ top: step });
+      if (direction < 0 && element.scrollTop > 4) return element.scrollBy({ top: -step });
+    }
+    const next = page + direction;
+    if (next < 1 || (pages > 0 && next > pages)) return;
+    changePage(next, direction < 0 && scrollFirst ? 'bottom' : 'top');
+  };
+
+  const showOp = (op: AnnotationOp | undefined) => {
+    if (!op) return;
+    setSelectedId(null);
+    setHiddenLayers(list => list.filter(l => l !== op.annotation.layer));
+    if (op.annotation.page !== page) changePage(op.annotation.page);
+  };
+  const undo = async () => {
     try {
-      await db.annotations.add({
-        id: uid(),
-        scoreId: score.id,
-        page,
-        layer,
-        kind,
-        color,
-        width: kind === 'highlight' ? 18 : 2.4,
-        points,
-        text: value,
-        fontSize: kind === 'text' ? size : undefined,
-        createdAt: now(),
-      });
-      setRedo([]);
+      showOp(await history.undo(annotationStore));
     } catch (err) {
-      notify(`A marcação não foi salva: ${errorText(err)}`);
+      notify(`Não foi possível desfazer. ${errorText(err)}`, 'error');
     }
   };
-  const point = (event: React.PointerEvent): Point => {
-    const r = svg.current!.getBoundingClientRect();
-    return {
-      x: Math.max(0, Math.min(1, (event.clientX - r.left) / r.width)),
-      y: Math.max(0, Math.min(1, (event.clientY - r.top) / r.height)),
-      pressure: event.pressure,
-    };
+  const redo = async () => {
+    try {
+      showOp(await history.redo(annotationStore));
+    } catch (err) {
+      notify(`Não foi possível refazer. ${errorText(err)}`, 'error');
+    }
   };
+
+  const keys = useRef<(event: KeyboardEvent) => void>(() => {});
+  useEffect(() => {
+    keys.current = event => {
+      if (event.defaultPrevented || event.isComposing) return;
+      if (isEditableTarget(event.target) || document.querySelector('dialog[open]')) return;
+      const key = event.key.toLowerCase();
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && (key === 'z' || key === 'y')) {
+        event.preventDefault();
+        void (key === 'y' || event.shiftKey ? redo() : undo());
+        return;
+      }
+      const action = pageKeyAction(event);
+      if (!action) return;
+      event.preventDefault();
+      turnPage(action);
+    };
+  });
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => keys.current(event);
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  const ensureLayerVisible = () => {
+    if (!hiddenLayers.includes(layer)) return;
+    setHiddenLayers(list => list.filter(l => l !== layer));
+    notify(`A camada “${layer}” estava oculta e voltou a aparecer.`, 'info');
+  };
+  const save = async (
+    points: Point[],
+    kind: Annotation['kind'],
+    onPage: number,
+    value?: string,
+    size?: number,
+  ) => {
+    const annotation: Annotation = {
+      id: uid(),
+      scoreId: score.id,
+      page: onPage,
+      layer,
+      kind,
+      color,
+      width: kind === 'highlight' ? 18 : 2.4,
+      points,
+      text: value,
+      fontSize: kind === 'text' ? size : undefined,
+      createdAt: now(),
+    };
+    try {
+      await db.annotations.add(annotation);
+      history.record({ type: 'create', annotation });
+      return true;
+    } catch (err) {
+      notify(`A marcação não foi salva. ${errorText(err)}`, 'error');
+      return false;
+    }
+  };
+  const erase = async (annotation: Annotation) => {
+    try {
+      await db.annotations.delete(annotation.id);
+      history.record({ type: 'delete', annotation });
+      setSelectedId(id => (id === annotation.id ? null : id));
+    } catch (err) {
+      notify(`Não foi possível apagar a anotação. ${errorText(err)}`, 'error');
+    }
+  };
+  const point = (event: { clientX: number; clientY: number; pressure: number }): Point => ({
+    ...pointFromClient(event.clientX, event.clientY, svg.current!.getBoundingClientRect()),
+    pressure: event.pressure,
+  });
   const selected = annotations.find(a => a.id === selectedId);
   const finishMove = async (
     pointerId: number,
@@ -216,38 +693,63 @@ export default function ScoreViewer({
       return;
     }
     const at = point(event);
-    const points = movePoints(active.annotation.points, at.x - active.start.x, at.y - active.start.y);
-    if (
-      points.some((p, i) => p.x !== active.annotation.points[i].x || p.y !== active.annotation.points[i].y)
-    ) {
+    const before = active.annotation.points;
+    const points = movePoints(before, at.x - active.start.x, at.y - active.start.y);
+    if (points.some((p, i) => p.x !== before[i].x || p.y !== before[i].y)) {
       setMovePreview({ id: active.annotation.id, points });
       try {
         await db.annotations.update(active.annotation.id, { points });
-        setRedo([]);
+        history.record({
+          type: 'update',
+          annotation: active.annotation,
+          before: { points: before },
+          after: { points },
+        });
       } catch (err) {
-        notify(`Não foi possível mover a anotação: ${errorText(err)}`);
+        notify(`Não foi possível mover a anotação. ${errorText(err)}`, 'error');
       }
     }
     setMovePreview(null);
   };
-  const region = targetRegion?.page === page ? targetRegion : undefined;
-  // Focus uses a viewport crop of the original canvas and its matching SVG overlay.
-  const crop =
-    focus && region
-      ? {
-          x: Math.max(0, region.x - 0.025),
-          y: Math.max(0, region.y - 0.025),
-          w: Math.min(1 - region.x + 0.025, region.w + 0.05),
-          h: Math.min(1 - region.y + 0.025, region.h + 0.05),
-        }
-      : null;
-  const draftPath = draft.map((p, i) => `${i ? 'L' : 'M'}${p.x * 1000},${p.y * 1000}`).join(' ');
-  const changePage = (next: number) => {
-    setPage(next);
-    setFocus(false);
-    container.current?.scrollTo({ top: 0, left: 0 });
+  const chooseTool = (next: Tool) => {
+    setTool(next);
+    setMenuOpen(false);
+    if (focus) setFocus(false);
+    if (next !== 'select') setSelectedId(null);
+  };
+  const chooseLayer = (name: string) => {
+    setLayer(name);
+    setColor(layers.find(l => l.name === name)?.color ?? color);
+  };
+  const toggleLayer = (name: string) =>
+    setHiddenLayers(list => (list.includes(name) ? list.filter(l => l !== name) : [...list, name]));
+  const setPencil = (value: boolean) => {
+    setPencilOnly(value);
+    setPencilOffer(false);
+    writeFlag(PENCIL_ONLY_KEY, value);
+  };
+  const notePen = () => {
+    penDown.current = true;
+    if (!pencilOnly && readFlag(PENCIL_ONLY_KEY) === undefined) setPencilOffer(true);
+  };
+  const exportScore = async () => {
+    if (!asset) return;
+    setExporting(true);
+    try {
+      const { exportAnnotated } = await import('../score-export');
+      download(
+        await exportAnnotated(asset, await db.annotations.where('scoreId').equals(score.id).toArray()),
+        `${score.title.replace(/\.[^.]+$/, '')}-anotada.pdf`,
+      );
+      setMenuOpen(false);
+    } catch (err) {
+      notify(`Não foi possível exportar a partitura. ${errorText(err)}`, 'error');
+    } finally {
+      setExporting(false);
+    }
   };
   const toggleFullscreen = async () => {
+    setMenuOpen(false);
     if (fullscreen) {
       if (document.fullscreenElement === viewer.current)
         try {
@@ -265,10 +767,14 @@ export default function ScoreViewer({
       } catch {
         /* CSS mode supports iPad Safari */
       }
+    fullscreenButton.current?.focus();
   };
-  const pageNavigation = (position: 'superior' | 'inferior') => (
+
+  const pageLabel = `Página ${page}${pages ? ` de ${pages}` : ''}`;
+  const pager = (position: 'superior' | 'inferior') => (
     <>
       <button
+        type="button"
         className="icon-btn"
         aria-label={`Página anterior (${position})`}
         disabled={page <= 1}
@@ -276,203 +782,308 @@ export default function ScoreViewer({
       >
         <ChevronLeft size={20} />
       </button>
-      <span>
-        Página {page} de {pages}
-      </span>
+      <span>{pageLabel}</span>
       <button
+        type="button"
         className="icon-btn"
         aria-label={`Próxima página (${position})`}
-        disabled={page >= pages}
+        disabled={pages > 0 && page >= pages}
         onClick={() => changePage(page + 1)}
       >
         <ChevronRight size={20} />
       </button>
     </>
   );
+  const annotating =
+    tool === 'select' || tool === 'pen' || tool === 'highlight' || tool === 'text' || tool === 'erase';
+  const drawingTool = tool === 'pen' || tool === 'highlight' || tool === 'text';
+  const interactive = tool === 'select' || tool === 'erase';
+  const touchAction = tool === 'navigate' || pencilOnly ? 'pan-x pan-y' : 'none';
+  const visibleAnnotations = annotations.filter(a => !hiddenLayers.includes(a.layer));
+  const segmentsHere =
+    showSegments && segments
+      ? segments.flatMap(s =>
+          s.regions
+            .filter(r => r.page === page && !sameRegion(r, region))
+            .map((r, i) => ({ key: `${s.id}-${i}`, id: s.id, title: s.title, region: r })),
+        )
+      : [];
+  const segmentsClickable = tool === 'navigate' && !!onSegmentClick && !focus;
+
   return (
-    <div ref={viewer} className={`score-viewer ${fullscreen ? 'is-fullscreen' : ''}`}>
-      {fullscreen && fullscreenOverlay && <div className="score-fullscreen-overlay">{fullscreenOverlay}</div>}
-      <div className="score-tools">
-        <div className="tool-group">
-          {(
-            [
-              ['navigate', MousePointer2, 'Navegar'],
-              ['select', Move, 'Selecionar e mover'],
-              ['pen', PenLine, 'Caneta'],
-              ['highlight', Highlighter, 'Marca-texto'],
-              ['text', Type, 'Texto'],
-              ['region', Scan, 'Marcar trecho'],
-              ['erase', Eraser, 'Apagar marcação'],
-            ] as const
-          ).map(([key, Icon, label]) => (
+    <div
+      ref={viewer}
+      className={`score-viewer ${fullscreen ? 'is-fullscreen' : ''}`}
+      role="region"
+      aria-label={fullscreen ? `Partitura em tela cheia: ${score.title}` : `Partitura: ${score.title}`}
+    >
+      <div className="score-toolbar">
+        <div className="score-toolset" role="toolbar" aria-label="Ferramentas da partitura">
+          {tools.map(([key, Icon, short, label]) => (
             <button
               key={key}
-              className={`icon-btn ${tool === key ? 'selected' : ''}`}
-              title={label}
+              type="button"
+              className={`score-tool ${tool === key ? 'active' : ''}`}
               aria-label={label}
               aria-pressed={tool === key}
-              onClick={() => {
-                setTool(key);
-                if (focus) setFocus(false);
-              }}
+              onClick={() => chooseTool(key)}
             >
-              <Icon size={19} />
+              <Icon size={19} aria-hidden />
+              <span className="score-tool-label">{short}</span>
             </button>
           ))}
         </div>
-        <div className="tool-group">
-          <input
-            type="color"
-            aria-label="Cor da anotação"
-            value={color}
-            onChange={e => setColor(e.target.value)}
-          />
-          <select aria-label="Camada de anotação" value={layer} onChange={e => setLayer(e.target.value)}>
-            {layers.map(l => (
-              <option key={l}>{l}</option>
-            ))}
-          </select>
+        <div className="score-toolbar-end">
+          <div className="score-pager score-pager-top">{pager('superior')}</div>
           <button
-            className="icon-btn"
-            aria-label={hiddenLayers.includes(layer) ? 'Mostrar camada ativa' : 'Ocultar camada ativa'}
-            onClick={() =>
-              setHiddenLayers(l => (l.includes(layer) ? l.filter(x => x !== layer) : [...l, layer]))
-            }
+            ref={menuButton}
+            type="button"
+            className={`score-tool ${menuOpen ? 'open' : ''}`}
+            aria-label="Mais opções da partitura"
+            aria-expanded={menuOpen}
+            aria-haspopup="dialog"
+            onClick={() => setMenuOpen(open => !open)}
           >
-            {hiddenLayers.includes(layer) ? <EyeOff size={18} /> : <Eye size={18} />}
+            <MoreHorizontal size={19} aria-hidden />
+            <span className="score-tool-label">Mais</span>
+          </button>
+          <button
+            ref={fullscreenButton}
+            type="button"
+            className="score-tool"
+            aria-label={fullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
+            onClick={() => void toggleFullscreen()}
+          >
+            {fullscreen ? <Minimize2 size={19} aria-hidden /> : <Maximize2 size={19} aria-hidden />}
+            <span className="score-tool-label">{fullscreen ? 'Sair' : 'Tela cheia'}</span>
           </button>
         </div>
-        <div className="tool-group">
-          <button
-            className="icon-btn"
-            aria-label="Desfazer última anotação nesta camada"
-            disabled={!annotations.some(a => a.layer === layer)}
-            onClick={async () => {
-              const last = annotations
-                .filter(a => a.layer === layer)
-                .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-                .at(-1);
-              if (last)
-                try {
-                  await db.annotations.delete(last.id);
-                  setRedo([...redo, last]);
-                } catch (e) {
-                  notify(errorText(e));
-                }
-            }}
-          >
-            <Undo2 size={18} />
-          </button>
-          <button
-            className="icon-btn"
-            aria-label="Refazer anotação"
-            disabled={!redo.length}
-            onClick={async () => {
-              const a = redo.at(-1);
-              if (a)
-                try {
-                  await db.annotations.put(a);
-                  setRedo(redo.slice(0, -1));
-                } catch (e) {
-                  notify(errorText(e));
-                }
-            }}
-          >
-            <Redo2 size={18} />
-          </button>
-          <button
-            className="icon-btn"
-            aria-label="Exportar partitura anotada"
-            disabled={!asset || exporting}
-            onClick={async () => {
-              if (!asset) return;
-              setExporting(true);
-              try {
-                const { exportAnnotated } = await import('../score-export');
-                download(
-                  await exportAnnotated(
-                    asset,
-                    await db.annotations.where('scoreId').equals(score.id).toArray(),
-                  ),
-                  `${score.title.replace(/\.[^.]+$/, '')}-anotada.pdf`,
-                );
-              } catch (e) {
-                notify(errorText(e));
-              } finally {
-                setExporting(false);
-              }
-            }}
-          >
-            <Download size={18} />
-          </button>
-        </div>
-      </div>
-      <div className="score-status">
-        <span>
-          {tool === 'region'
-            ? 'Arraste um retângulo ao redor do trecho.'
-            : tool === 'navigate'
-              ? 'Leia a partitura. Selecione uma ferramenta para anotar.'
-              : tool === 'select'
-                ? 'Toque em uma anotação para selecioná-la e arraste para mover.'
-                : tool === 'erase'
-                  ? 'Toque na marcação da camada ativa para apagar.'
-                  : `Anotando em ${layer} · dedo ou caneta`}
-        </span>
-        {region && (
-          <button
-            className="link-btn"
-            onClick={() => {
-              setFocus(!focus);
-              setTool('navigate');
-            }}
-          >
-            {focus ? 'Ver página inteira' : 'Focar no trecho'}
-          </button>
+        {menuOpen && (
+          <div ref={menu} className="score-menu" role="dialog" aria-label="Mais opções da partitura">
+            <button
+              type="button"
+              className="score-menu-item"
+              disabled={!asset || exporting}
+              onClick={() => void exportScore()}
+            >
+              <Download size={18} aria-hidden />
+              {exporting ? 'Exportando…' : 'Exportar PDF com anotações'}
+            </button>
+            <fieldset className="score-menu-group">
+              <legend>Camadas visíveis</legend>
+              {layers.map(l => (
+                <label key={l.name} className="score-menu-check">
+                  <input
+                    type="checkbox"
+                    checked={!hiddenLayers.includes(l.name)}
+                    onChange={() => toggleLayer(l.name)}
+                  />
+                  <span className="layer-dot" style={{ '--dot': l.color } as CSSProperties} aria-hidden />
+                  {l.name}
+                </label>
+              ))}
+            </fieldset>
+            <fieldset className="score-menu-group">
+              <legend>Leitura e escrita</legend>
+              {segments && (
+                <label className="score-menu-check">
+                  <input
+                    type="checkbox"
+                    checked={showSegments}
+                    onChange={e => {
+                      setShowSegments(e.target.checked);
+                      writeFlag(SHOW_SEGMENTS_KEY, e.target.checked);
+                    }}
+                  />
+                  <span>
+                    Mostrar trechos
+                    <small>Retângulos discretos nos trechos marcados.</small>
+                  </span>
+                </label>
+              )}
+              <label className="score-menu-check">
+                <input type="checkbox" checked={pencilOnly} onChange={e => setPencil(e.target.checked)} />
+                <span>
+                  Só Apple Pencil
+                  <small>A caneta escreve; o dedo rola e amplia a partitura.</small>
+                </span>
+              </label>
+            </fieldset>
+            <p className="score-menu-hint">
+              Teclado ou pedal: → e ← viram a página; ↓ e ↑ rolam a página ampliada antes de virar.
+            </p>
+          </div>
         )}
       </div>
-      <div className="page-controls page-controls-top">
-        {pageNavigation('superior')}
-        <div className="spacer" />
-        <button
-          className="btn small secondary score-fullscreen-button"
-          aria-label={fullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
-          onClick={() => void toggleFullscreen()}
-        >
-          {fullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
-          <span>{fullscreen ? 'Sair da tela cheia' : 'Tela cheia'}</span>
-        </button>
-      </div>
-      {tool === 'select' && (
-        <div className="annotation-selection-bar">
-          {selected ? (
+      {pencilOffer && (
+        <div className="score-notice" role="status">
+          <p>
+            Apple Pencil por aqui. Quer que só a caneta escreva? Assim o dedo rola e amplia a partitura sem
+            riscar.
+          </p>
+          <button type="button" className="btn small" onClick={() => setPencil(true)}>
+            Usar só a caneta
+          </button>
+          <button type="button" className="btn small secondary" onClick={() => setPencil(false)}>
+            Agora não
+          </button>
+        </div>
+      )}
+      {(annotating || tool === 'region' || region) && (
+        <div className="score-subbar">
+          {annotating && (
             <>
-              <span>Selecionada · {selected.layer}</span>
-              {selected.kind === 'text' && (
+              <div className="score-subgroup">
                 <button
-                  className="btn small secondary"
-                  onClick={() => {
-                    setEditingText(selected.id);
-                    setText(selected.text ?? '');
-                    setFontSize(selected.fontSize ?? 20);
-                  }}
+                  type="button"
+                  className="icon-btn"
+                  aria-label="Desfazer"
+                  title="Desfazer (Ctrl+Z)"
+                  disabled={!history.canUndo}
+                  onClick={() => void undo()}
                 >
-                  Editar texto e tamanho
+                  <Undo2 size={18} />
                 </button>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label="Refazer"
+                  title="Refazer (Ctrl+Shift+Z)"
+                  disabled={!history.canRedo}
+                  onClick={() => void redo()}
+                >
+                  <Redo2 size={18} />
+                </button>
+              </div>
+              {tool !== 'select' && (
+                <select
+                  className="score-layer-select"
+                  aria-label="Camada"
+                  value={layer}
+                  onChange={e => chooseLayer(e.target.value)}
+                >
+                  {layers.map(l => (
+                    <option key={l.name}>{l.name}</option>
+                  ))}
+                </select>
               )}
-              <button className="link-btn" onClick={() => setSelectedId(null)}>
-                Desmarcar
+              {drawingTool && (
+                <div className="score-swatches" role="group" aria-label="Cor">
+                  {swatches.map(([value, name]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      className="score-swatch"
+                      aria-label={name}
+                      aria-pressed={color === value}
+                      style={{ '--swatch': value } as CSSProperties}
+                      onClick={() => setColor(value)}
+                    />
+                  ))}
+                  <label
+                    className="score-swatch score-swatch-custom"
+                    data-active={!swatches.some(([value]) => value === color)}
+                    style={{ '--swatch': color } as CSSProperties}
+                  >
+                    <Plus size={14} aria-hidden />
+                    <input
+                      type="color"
+                      aria-label="Outra cor"
+                      value={color}
+                      onChange={e => setColor(e.target.value)}
+                    />
+                  </label>
+                </div>
+              )}
+              {drawingTool && hiddenLayers.includes(layer) && (
+                <span className="score-warning">
+                  “{layer}” está oculta
+                  <button type="button" className="link-btn" onClick={() => toggleLayer(layer)}>
+                    Mostrar
+                  </button>
+                </span>
+              )}
+              {tool === 'erase' && <span className="score-hint">Toque numa anotação de “{layer}”.</span>}
+              {tool === 'select' &&
+                (selected ? (
+                  <>
+                    <span className="score-hint strong">
+                      {kindLabels[selected.kind]}
+                      {selected.kind === 'text' && selected.text
+                        ? ` “${selected.text.slice(0, 24)}”`
+                        : ''} · {selected.layer}
+                    </span>
+                    {selected.kind === 'text' && (
+                      <button
+                        type="button"
+                        className="btn small secondary"
+                        onClick={() => {
+                          setEditingText(selected);
+                          setText(selected.text ?? '');
+                          setFontSize(selected.fontSize ?? 20);
+                        }}
+                      >
+                        Editar texto
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="btn small secondary"
+                      onClick={() => void erase(selected)}
+                    >
+                      <Trash2 size={15} aria-hidden />
+                      Apagar
+                    </button>
+                    <button type="button" className="link-btn" onClick={() => setSelectedId(null)}>
+                      Desmarcar
+                    </button>
+                  </>
+                ) : (
+                  <span className="score-hint">
+                    Toque numa anotação para selecioná-la e arraste para mover.
+                  </span>
+                ))}
+            </>
+          )}
+          {tool === 'region' && (
+            <>
+              <span className="score-hint">
+                Arraste um retângulo ao redor do trecho que você quer praticar.
+              </span>
+              <button type="button" className="link-btn" onClick={() => chooseTool('navigate')}>
+                Cancelar
               </button>
             </>
-          ) : (
-            <span>Toque e arraste uma anotação.</span>
+          )}
+          {tool === 'navigate' && region && (
+            <>
+              <span className="score-hint">Trecho marcado nesta página.</span>
+              <button
+                type="button"
+                className="btn small secondary"
+                aria-pressed={focus}
+                onClick={() => setFocus(!focus)}
+              >
+                {focus ? 'Ver página inteira' : 'Focar no trecho'}
+              </button>
+              {focus && (
+                <button
+                  type="button"
+                  className="btn small secondary"
+                  aria-pressed={focusContext === 'system'}
+                  onClick={() => setFocusContext(c => (c === 'system' ? 'lead-in' : 'system'))}
+                >
+                  Sistema inteiro
+                </button>
+              )}
+            </>
           )}
         </div>
       )}
       <ErrorBox message={error} />
       {error && (
         <div className="row" style={{ padding: 12 }}>
-          <button className="btn secondary small" onClick={() => setAttempt(n => n + 1)}>
+          <button type="button" className="btn secondary small" onClick={() => setAttempt(n => n + 1)}>
             Tentar novamente
           </button>
           <span className="hint">O arquivo original continua salvo.</span>
@@ -480,11 +1091,14 @@ export default function ScoreViewer({
       )}
       <div className="score-scroll" ref={container}>
         <div
+          ref={sheet}
           className="score-sheet"
           style={{
-            width: width * zoom,
-            height: crop ? (width * zoom * ratio * crop.h) / crop.w : width * zoom * ratio,
+            width: renderWidth,
+            height: sheetHeight,
             overflow: 'hidden',
+            transform: gesture ? `scale(${gesture.scale})` : undefined,
+            transformOrigin: gesture ? `${gesture.x * 100}% ${gesture.y * 100}%` : undefined,
           }}
         >
           {loading && <span className="loading-label">Carregando partitura…</span>}
@@ -497,18 +1111,26 @@ export default function ScoreViewer({
               transformOrigin: 'top left',
             }}
           >
-            <canvas ref={canvas} style={{ width: '100%', height: '100%', display: 'block' }} />
+            <canvas
+              ref={canvas}
+              role="img"
+              aria-label={`Partitura ${score.title}, ${pageLabel.toLowerCase()}`}
+              style={{ width: '100%', height: '100%', display: 'block' }}
+            />
             <svg
               ref={svg}
               className="annotation-overlay"
-              viewBox="0 0 1000 1000"
+              viewBox={overlayViewBox(ratio)}
               preserveAspectRatio="none"
-              style={{
-                touchAction: tool === 'navigate' ? 'pan-x pan-y' : 'none',
-                pointerEvents: focus ? 'none' : undefined,
+              role="group"
+              aria-label="Anotações e trechos"
+              style={{ touchAction, pointerEvents: focus ? 'none' : undefined }}
+              onPointerDownCapture={e => {
+                if (e.pointerType === 'pen') notePen();
               }}
               onPointerDown={e => {
-                if (tool === 'navigate' || focus || pointer.current !== null) return;
+                if (tool === 'navigate' || focus || pointer.current !== null || pinching.current) return;
+                if (pencilOnly && e.pointerType === 'touch') return;
                 if (tool === 'erase') return;
                 if (tool === 'select') {
                   setSelectedId(null);
@@ -516,11 +1138,13 @@ export default function ScoreViewer({
                 }
                 const p = point(e);
                 if (tool === 'text') {
-                  setTextPoint(p);
+                  ensureLayerVisible();
+                  setTextPoint({ point: p, page });
                   setText('');
                   setFontSize(20);
                   return;
                 }
+                if (tool !== 'region') ensureLayerVisible();
                 pointer.current = e.pointerId;
                 e.currentTarget.setPointerCapture(e.pointerId);
                 drawing.current = [p];
@@ -546,12 +1170,15 @@ export default function ScoreViewer({
                 setDraft(drawing.current);
               }}
               onPointerCancel={e => {
+                if (e.pointerType === 'pen') penDown.current = false;
                 if (moving.current?.pointerId === e.pointerId) void finishMove(e.pointerId, e, true);
+                if (pointer.current !== e.pointerId) return;
                 pointer.current = null;
                 drawing.current = [];
                 setDraft([]);
               }}
               onPointerUp={e => {
+                if (e.pointerType === 'pen') penDown.current = false;
                 if (moving.current?.pointerId === e.pointerId) {
                   void finishMove(e.pointerId, e);
                   return;
@@ -578,144 +1205,212 @@ export default function ScoreViewer({
                   void save(
                     points.length === 1 ? [points[0], { ...points[0], x: points[0].x + 0.0001 }] : points,
                     tool,
+                    page,
                   );
               }}
             >
-              {annotations
-                .filter(a => !hiddenLayers.includes(a.layer))
-                .map(a => {
-                  const points = movePreview?.id === a.id ? movePreview.points : a.points;
-                  const path = points.map((p, i) => `${i ? 'L' : 'M'}${p.x * 1000},${p.y * 1000}`).join(' ');
-                  const interactive = tool === 'select' || tool === 'erase';
-                  return (
-                    <g
-                      key={a.id}
-                      opacity={selectedId === a.id ? 1 : a.layer === layer ? 1 : 0.65}
-                      onPointerDown={async e => {
-                        if (tool === 'select') {
-                          e.stopPropagation();
-                          setSelectedId(a.id);
-                          moving.current = { pointerId: e.pointerId, annotation: a, start: point(e) };
-                          svg.current?.setPointerCapture(e.pointerId);
-                        } else if (tool === 'erase' && a.layer === layer) {
-                          e.stopPropagation();
-                          try {
-                            await db.annotations.delete(a.id);
-                            setRedo([...redo, a]);
-                            setSelectedId(null);
-                          } catch (err) {
-                            notify(errorText(err));
+              {segmentsHere.map(mark => {
+                const rect = overlayRect(mark.region, ratio);
+                const labelSize = 12 * unit;
+                const label = mark.title.length > 32 ? `${mark.title.slice(0, 31)}…` : mark.title;
+                return (
+                  <g
+                    key={mark.key}
+                    className={`segment-mark ${segmentsClickable ? 'interactive' : ''}`}
+                    role={segmentsClickable ? 'button' : undefined}
+                    tabIndex={segmentsClickable ? 0 : undefined}
+                    aria-label={segmentsClickable ? `Trecho ${mark.title}` : undefined}
+                    onClick={segmentsClickable ? () => onSegmentClick?.(mark.id) : undefined}
+                    onKeyDown={
+                      segmentsClickable
+                        ? e => {
+                            if (e.key !== 'Enter' && e.key !== ' ') return;
+                            e.preventDefault();
+                            onSegmentClick?.(mark.id);
                           }
-                        }
-                      }}
-                      style={{
-                        pointerEvents: interactive ? 'auto' : 'none',
-                        cursor: tool === 'select' ? 'grab' : tool === 'erase' ? 'pointer' : undefined,
-                      }}
+                        : undefined
+                    }
+                  >
+                    <rect
+                      {...rect}
+                      rx={4 * unit}
+                      className="segment-mark-box"
+                      strokeWidth={1.5 * unit}
+                      strokeDasharray={`${6 * unit} ${4 * unit}`}
+                    />
+                    <text
+                      className="segment-mark-label"
+                      x={rect.x + 3 * unit}
+                      y={rect.y > labelSize * 1.5 ? rect.y - labelSize * 0.4 : rect.y + labelSize * 1.1}
+                      fontSize={labelSize}
+                      strokeWidth={3 * unit}
                     >
-                      {a.kind === 'text' ? (
-                        <text
-                          x={points[0].x * 1000}
-                          y={points[0].y * 1000}
-                          fill={a.color}
-                          fontSize={a.fontSize ?? 20}
-                          fontFamily="sans-serif"
-                          stroke="transparent"
-                          strokeWidth={interactive ? 18 : 0}
-                          paintOrder="stroke"
-                          style={{ pointerEvents: interactive ? 'visiblePainted' : 'none' }}
-                        >
-                          {a.text}
-                        </text>
-                      ) : (
-                        <>
-                          {interactive && (
-                            <path
-                              d={path}
-                              stroke="transparent"
-                              strokeWidth={Math.max(18, a.width + 12)}
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              fill="none"
-                              pointerEvents="stroke"
-                            />
-                          )}
+                      {label}
+                    </text>
+                  </g>
+                );
+              })}
+              {visibleAnnotations.map(a => {
+                const points = movePreview?.id === a.id ? movePreview.points : a.points;
+                const path = overlayPath(points, ratio);
+                const hitWidth = Math.max(a.width + 12, 24 * unit);
+                return (
+                  <g
+                    key={a.id}
+                    opacity={selectedId === a.id ? 1 : a.layer === layer ? 1 : 0.65}
+                    className={selectedId === a.id ? 'annotation-selected' : undefined}
+                    onPointerDown={e => {
+                      if (pencilOnly && e.pointerType === 'touch') return;
+                      if (tool === 'select') {
+                        e.stopPropagation();
+                        setSelectedId(a.id);
+                        moving.current = { pointerId: e.pointerId, annotation: a, start: point(e) };
+                        svg.current?.setPointerCapture(e.pointerId);
+                      } else if (tool === 'erase' && a.layer === layer) {
+                        e.stopPropagation();
+                        void erase(a);
+                      }
+                    }}
+                    style={{
+                      pointerEvents: interactive ? 'auto' : 'none',
+                      cursor: tool === 'select' ? 'grab' : tool === 'erase' ? 'pointer' : undefined,
+                    }}
+                  >
+                    {a.kind === 'text' ? (
+                      <text
+                        {...toOverlay(points[0], ratio)}
+                        fill={a.color}
+                        fontSize={a.fontSize ?? 20}
+                        fontFamily="Helvetica, Arial, sans-serif"
+                        stroke="transparent"
+                        strokeWidth={interactive ? Math.max(18, 16 * unit) : 0}
+                        paintOrder="stroke"
+                        style={{ pointerEvents: interactive ? 'visiblePainted' : 'none' }}
+                      >
+                        {a.text}
+                      </text>
+                    ) : (
+                      <>
+                        {interactive && (
                           <path
                             d={path}
-                            stroke={a.color}
-                            strokeWidth={a.width}
+                            stroke="transparent"
+                            strokeWidth={hitWidth}
                             strokeLinecap="round"
                             strokeLinejoin="round"
-                            opacity={a.kind === 'highlight' ? 0.3 : 1}
                             fill="none"
-                            pointerEvents="none"
+                            pointerEvents="stroke"
                           />
-                        </>
-                      )}
-                    </g>
-                  );
-                })}
+                        )}
+                        <path
+                          d={path}
+                          stroke={a.color}
+                          strokeWidth={a.width}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          opacity={a.kind === 'highlight' ? 0.3 : 1}
+                          fill="none"
+                          pointerEvents="none"
+                        />
+                      </>
+                    )}
+                  </g>
+                );
+              })}
               {region && (
                 <rect
-                  x={region.x * 1000}
-                  y={region.y * 1000}
-                  width={region.w * 1000}
-                  height={region.h * 1000}
+                  {...overlayRect(region, ratio)}
                   fill="#e9af58"
                   fillOpacity=".12"
                   stroke="#bd8023"
-                  strokeWidth="2"
-                  strokeDasharray="8 4"
+                  strokeWidth={2 * unit}
+                  strokeDasharray={`${8 * unit} ${4 * unit}`}
                 />
               )}
               {tool === 'region' && draft.length > 1 ? (
                 <rect
-                  x={Math.min(draft[0].x, draft[1].x) * 1000}
-                  y={Math.min(draft[0].y, draft[1].y) * 1000}
-                  width={Math.abs(draft[0].x - draft[1].x) * 1000}
-                  height={Math.abs(draft[0].y - draft[1].y) * 1000}
+                  {...overlayRect(
+                    {
+                      x: Math.min(draft[0].x, draft[1].x),
+                      y: Math.min(draft[0].y, draft[1].y),
+                      w: Math.abs(draft[0].x - draft[1].x),
+                      h: Math.abs(draft[0].y - draft[1].y),
+                    },
+                    ratio,
+                  )}
                   fill="#087e8b"
                   fillOpacity=".15"
                   stroke="#087e8b"
-                  strokeWidth="2"
+                  strokeWidth={2 * unit}
                 />
               ) : (
-                <path
-                  d={draftPath}
-                  stroke={color}
-                  strokeWidth={tool === 'highlight' ? 18 : 2.4}
-                  opacity={tool === 'highlight' ? 0.3 : 1}
-                  strokeLinecap="round"
-                  fill="none"
-                />
+                draft.length > 0 && (
+                  <path
+                    d={overlayPath(draft, ratio)}
+                    stroke={color}
+                    strokeWidth={tool === 'highlight' ? 18 : 2.4}
+                    opacity={tool === 'highlight' ? 0.3 : 1}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    fill="none"
+                  />
+                )
               )}
             </svg>
           </div>
         </div>
       </div>
-      <div className="page-controls">
-        {pageNavigation('inferior')}
-        <div className="spacer" />
-        <button
-          className="icon-btn"
-          aria-label="Diminuir zoom"
-          disabled={zoom <= 0.75}
-          onClick={() => setZoom(Math.max(0.75, zoom - 0.25))}
-        >
-          <ZoomOut size={18} />
-        </button>
-        <span>{Math.round(zoom * 100)}%</span>
-        <button
-          className="icon-btn"
-          aria-label="Aumentar zoom"
-          disabled={zoom >= 2}
-          onClick={() => setZoom(Math.min(2, zoom + 0.25))}
-        >
-          <ZoomIn size={18} />
-        </button>
+      <div className="page-controls score-bottom">
+        <div className="score-pager">{pager('inferior')}</div>
+        {fullscreen && fullscreenOverlay && <div className="score-overlay-slot">{fullscreenOverlay}</div>}
+        <div className="score-zoom" role="group" aria-label="Tamanho da partitura">
+          <button
+            type="button"
+            className={`score-fit ${fit === 'width' ? 'active' : ''}`}
+            aria-label="Ajustar à largura"
+            aria-pressed={fit === 'width'}
+            onClick={() => chooseFit('width')}
+          >
+            <MoveHorizontal size={17} aria-hidden />
+            <span>Largura</span>
+          </button>
+          <button
+            type="button"
+            className={`score-fit ${fit === 'page' ? 'active' : ''}`}
+            aria-label="Página inteira"
+            aria-pressed={fit === 'page'}
+            onClick={() => chooseFit('page')}
+          >
+            <RectangleVertical size={17} aria-hidden />
+            <span>Página inteira</span>
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Diminuir zoom"
+            disabled={effectiveZoom <= MIN_ZOOM}
+            onClick={() => stepZoom(-1)}
+          >
+            <ZoomOut size={18} />
+          </button>
+          <span className="score-zoom-value">{Math.round(effectiveZoom * 100)}%</span>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Aumentar zoom"
+            disabled={effectiveZoom >= MAX_ZOOM}
+            onClick={() => stepZoom(1)}
+          >
+            <ZoomIn size={18} />
+          </button>
+        </div>
       </div>
+      <span className="score-sr-only" aria-live="polite">
+        {pageLabel}
+      </span>
       {(textPoint || editingText) && (
         <Modal
+          guard
           title={editingText ? 'Editar anotação de texto' : 'Anotação na partitura'}
           onClose={() => {
             setTextPoint(undefined);
@@ -727,16 +1422,19 @@ export default function ScoreViewer({
               e.preventDefault();
               if (!text.trim() || fontSize < 10 || fontSize > 100) return;
               if (editingText) {
+                const before = { text: editingText.text, fontSize: editingText.fontSize };
+                const after = { text: text.trim(), fontSize };
                 try {
-                  await db.annotations.update(editingText, { text: text.trim(), fontSize });
+                  await db.annotations.update(editingText.id, after);
+                  history.record({ type: 'update', annotation: editingText, before, after });
                   setEditingText(null);
                   notify('Texto atualizado na partitura.');
                 } catch (err) {
-                  notify(errorText(err));
+                  notify(`O texto não foi atualizado. ${errorText(err)}`, 'error');
                 }
               } else if (textPoint) {
-                await save([textPoint], 'text', text.trim(), fontSize);
-                setTextPoint(undefined);
+                if (await save([textPoint.point], 'text', textPoint.page, text.trim(), fontSize))
+                  setTextPoint(undefined);
               }
             }}
           >
@@ -746,6 +1444,7 @@ export default function ScoreViewer({
                 maxLength={160}
                 onChange={e => setText(e.target.value)}
                 autoFocus
+                data-autofocus
                 required
                 placeholder="Ex.: 1–2–4 / atenção ao pedal"
               />
@@ -760,9 +1459,19 @@ export default function ScoreViewer({
                 onChange={e => setFontSize(Number(e.target.value))}
                 required
               />
-              <small>Entre 10 e 100, proporcional ao tamanho da partitura.</small>
+              <small>Entre 10 e 100, proporcional à largura da página.</small>
             </Field>
             <footer className="modal-actions">
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={() => {
+                  setTextPoint(undefined);
+                  setEditingText(null);
+                }}
+              >
+                Cancelar
+              </button>
               <button
                 className="btn"
                 disabled={!text.trim() || !Number.isInteger(fontSize) || fontSize < 10 || fontSize > 100}
