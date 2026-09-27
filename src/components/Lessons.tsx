@@ -37,6 +37,11 @@ import '../styles/lessons.css';
 /** AI questions saved as lesson notes start with this, so other screens (e.g. the next-lesson report) can find them. */
 export const QUESTION_PREFIX = 'Pergunta para a próxima aula: ';
 const PROFILE_KEY = 'compasso.lessonRecordingProfile';
+/** A note typed in Anotações and not saved yet: leaving the lesson asks first. */
+const noteDraftWork = {
+  title: 'Sair sem salvar a anotação?',
+  message: 'A anotação que você começou a escrever ainda não foi salva e será descartada.',
+};
 /** "a, b e c" */
 const listText = (items: string[]) =>
   items.length > 1 ? `${items.slice(0, -1).join(', ')} e ${items.at(-1)}` : (items[0] ?? '');
@@ -694,6 +699,12 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
     setUnsaved('lesson-suggestions', { title: 'Sair sem guardar as sugestões?', message: unsavedMessage });
     return () => setUnsaved('lesson-suggestions', null);
   }, [unsavedMessage]);
+  const noteDraft = note.trim() !== '';
+  useEffect(() => {
+    if (!noteDraft) return;
+    setUnsaved('lesson-note', noteDraftWork);
+    return () => setUnsaved('lesson-note', null);
+  }, [noteDraft]);
   const back = async () => {
     if (
       capturing &&
@@ -706,11 +717,12 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
       }))
     )
       return;
+    const discarded = [unsavedMessage, noteDraft ? noteDraftWork.message : ''].filter(Boolean);
     if (
-      unsaved.length &&
+      discarded.length &&
       !(await confirm({
-        title: 'Sair sem guardar as sugestões?',
-        message: unsavedMessage,
+        title: unsaved.length ? 'Sair sem guardar as sugestões?' : noteDraftWork.title,
+        message: discarded.join(' '),
         confirmLabel: 'Sair sem guardar',
         cancelLabel: 'Continuar aqui',
         danger: true,

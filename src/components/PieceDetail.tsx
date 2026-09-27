@@ -32,11 +32,17 @@ import { Modal, Field, Empty, Badge, ErrorBox, errorText, useConfirm, type Notif
 import { PieceForm } from './Library';
 import ScoreViewer from './ScoreViewer';
 import { forgetHistory } from '../annotation-history';
+import { setUnsaved } from '../unsaved';
 import { forgetViewState, loadLastScore, saveLastScore, titleFromFileName } from '../score-view';
 import { plural, ratingLabels, relativeDay, segmentStats, type SegmentStats } from '../segment-stats';
 import '../styles/score.css';
 
 const scoreTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
+/** A note typed in Notas and not saved yet: leaving the piece asks first. */
+const noteDraftWork = {
+  title: 'Sair sem salvar a nota?',
+  message: 'A nota que você começou a escrever em Notas ainda não foi salva e será descartada.',
+};
 
 export function SegmentForm({
   pieceId,
@@ -423,6 +429,13 @@ export default function PieceDetail({
   useEffect(() => {
     if (active) saveLastScore(id, active.id);
   }, [id, active]);
+  const noteDraft = note.trim() !== '';
+  useEffect(() => {
+    if (!noteDraft) return;
+    // Leaving through the sidebar, the back link or the Back gesture asks first (the app shell reads this).
+    setUnsaved('piece-note', noteDraftWork);
+    return () => setUnsaved('piece-note', null);
+  }, [noteDraft]);
   if (!piece) return <Empty title="Carregando peça" text="Preparando seu espaço de estudo." />;
 
   const importScore = async (file: File) => {
