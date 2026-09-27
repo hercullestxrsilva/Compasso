@@ -55,9 +55,9 @@ Dados locais não são sincronizados automaticamente. A persistência solicitada
 
 ## Backup
 
-**Preferências e dados → Exportar backup** gera um `.zip` com `manifest.json` (peças, trechos, marcações, sessões, aulas, notas, tarefas e rotinas) e a pasta `assets/` com as partituras e os áudios originais, sem conversão. O arquivo é montado aos poucos, sem carregar o acervo inteiro na memória. O limite é de 4 GB por backup (ZIP sem zip64); o navegador precisa de espaço livre parecido com o tamanho do acervo e a tela avisa quando ele parece insuficiente. Gravações interrompidas que ainda não foram recuperadas não entram no backup.
+**Preferências e dados → Exportar backup** gera um `.zip` com `manifest.json` (peças, trechos, marcações, sessões, aulas, notas, tarefas e rotinas) e a pasta `assets/` com as partituras e os áudios originais, sem conversão. No Chrome e no Edge do computador você escolhe onde salvar, e o backup só é registrado depois que o arquivo foi gravado. Nos outros navegadores o arquivo vai para Downloads; como o navegador não confirma o salvamento, a tela mostra “Última exportação”. O limite é de 4 GB por backup (ZIP sem zip64), e o navegador precisa de espaço livre parecido com o tamanho do acervo; a tela avisa quando ele parece insuficiente. O arquivo é montado em partes, mas o Safari pode mantê-lo inteiro na memória: no iPad, acervos acima de ~1 GB ainda precisam de teste no aparelho. Se o navegador não conseguir ler algum arquivo, você pode exportar o restante sem ele. Gravações interrompidas que ainda não foram recuperadas não entram no backup.
 
-A restauração aceita o `.zip` e os `.json` de versões anteriores (até 180 MB). Antes de mexer em qualquer dado, ela confere o índice, a presença, o tamanho e a soma de verificação de cada arquivo e as ligações entre registros, e mostra um resumo para você confirmar. Tudo é gravado em uma única transação: se algo falhar, nada muda. A tela mostra quando foi o último backup deste navegador e avisa quando passa de 7 dias ou há arquivos novos desde então.
+A restauração aceita o `.zip` (inclusive extraído e compactado de novo em uma pasta) e os `.json` de versões anteriores (até 180 MB). Antes de mexer em qualquer dado, ela confere o índice, a presença, o tamanho e a soma de verificação de cada arquivo e as ligações entre registros. Depois mostra um resumo para você confirmar, com a opção de exportar antes o acervo atual. Tudo é gravado em uma única transação: se algo falhar, inclusive por falta de espaço, nada muda. A tela mostra quando foi o último backup deste navegador e avisa quando passa de 7 dias ou há arquivos novos desde então.
 
 ## Ativar IA opcional
 
@@ -106,7 +106,7 @@ npm test
 npm run build
 ```
 
-São 34 testes cobrindo contagem de prática, agendamento de áudio com relógio simulado, recuperação de capturas, formato e análise de gravações, integridade de backup, movimentação de anotações, preservação de registros vinculados, renderização/cancelamento de PDF e fronteiras da API. Os testes de IA usam respostas simuladas do provedor.
+Os testes cobrem contagem de prática, agendamento de áudio com relógio simulado, recuperação de capturas, formato e análise de gravações, integridade de backup, movimentação de anotações, preservação de registros vinculados, renderização/cancelamento de PDF e fronteiras da API. Os testes de IA usam respostas simuladas do provedor.
 
 Os comandos `npm run dev` e `npm run build` preparam automaticamente os recursos auxiliares do PDF.js em `public/pdfjs/<versão>`. Eles incluem decodificadores de imagens digitalizadas (JPEG2000/JBIG2), fontes e perfis de cor. Preserve essa pasta no pacote publicado: sem esses recursos, certos PDFs podem ficar em branco. O build de produção inclui esses arquivos no cache offline.
 
