@@ -1,0 +1,5 @@
+import { PDFDocument,StandardFonts,rgb } from 'pdf-lib';
+import { mkdir,writeFile } from 'node:fs/promises';
+const pdf=await PDFDocument.create(),font=await pdf.embedFont(StandardFonts.Helvetica);
+for(let i=1;i<=2;i++){const page=pdf.addPage([595,842]);page.drawText('COMPASSO - DOCUMENTO DE TESTE',{x:45,y:786,size:17,font,color:rgb(.1,.3,.32)});page.drawText('Arquivo sintetico para verificar leitura, anotacoes e trechos.',{x:45,y:760,size:10,font});for(let staff=0;staff<8;staff++){const y=690-staff*70;for(let line=0;line<5;line++)page.drawLine({start:{x:45,y:y-line*7},end:{x:550,y:y-line*7},thickness:.6,color:rgb(.3,.3,.3)});for(let bar=0;bar<5;bar++)page.drawLine({start:{x:45+bar*126,y},end:{x:45+bar*126,y:y-28},thickness:.6});page.drawText(String(staff*4+1),{x:46,y:y+8,size:8,font});}page.drawText(`Pagina ${i} - nao e material pedagogico`,{x:45,y:38,size:9,font});}
+await mkdir('tests/fixtures',{recursive:true});await writeFile('tests/fixtures/partitura-teste.pdf',await pdf.save());console.log('Synthetic PDF fixture created.');

@@ -1,0 +1,26 @@
+{
+  "id": "/",
+  "name": "Compasso · estudos de piano",
+  "short_name": "Compasso",
+  "description": "Partituras, aulas e prática de piano",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f7f8",
+  "theme_color": "#123b40",
+  "icons": [
+    {
+      "sizes": "192x192",
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "sizes": "512x512",
+      "src": "/icon-512.png",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
