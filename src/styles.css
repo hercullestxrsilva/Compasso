@@ -61,7 +61,7 @@
   --rating-difficult-edge: #b5523b;
   --rating-improving: #7a5410;
   --rating-improving-bg: #fbf1dc;
-  --rating-improving-edge: #c3922b;
+  --rating-improving-edge: #9c6f14;
   --rating-comfortable: #23663f;
   --rating-comfortable-bg: #e3f1e8;
   --rating-comfortable-edge: #2f8a63;
@@ -104,9 +104,10 @@
   --chart-grid: #e6eeef;
   --chart-cross: #c3d3d6;
   --chart-axis: #5c6e73;
-  --chart-bar: #8fb7b9;
-  --chart-bar-met: #5f9ea0;
-  --chart-spark: #7fa9ab;
+  --chart-bar: #5b9496; /* 3.2:1 on the track: every bar is a readable shape */
+  --chart-bar-met: #3d7c7f;
+  --chart-today: #0e5a5e;
+  --chart-spark: #5b9496;
   --chart-goal: #94640f;
 
   /* Piece cover tones, chosen from the piece id */
@@ -128,8 +129,10 @@
   --paper-focus: #0e7f89;
   --annotation-palette: conic-gradient(#c0392b, #e0a100, #087e8b, #1f5fbf, #c0392b);
 
-  /* Focus */
+  /* Focus and selection marks */
   --focus: #0e5a5e;
+  --tool-mark: var(--gold); /* underline of the active score tool, on --accent */
+  --segment-ring: var(--accent); /* outline of the chosen option in a segmented control */
 
   /* Elevation */
   --shadow-sm: 0 1px 3px rgb(16 43 59 / 0.1);
@@ -159,7 +162,9 @@
   --lh-body: 1.6;
 
   /* Space, radii, sizes */
+  --space-0-5: 2px; /* half steps, for dense rows and chips only */
   --space-1: 4px;
+  --space-1-5: 6px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
@@ -268,8 +273,9 @@
     --chart-grid: #22373b;
     --chart-cross: #3a5256;
     --chart-axis: #98acaf;
-    --chart-bar: #4a7d7f;
-    --chart-bar-met: #3f8a86;
+    --chart-bar: #4c7f82;
+    --chart-bar-met: #62a09c;
+    --chart-today: #7fcdc7;
     --chart-spark: #5e9c99;
     --chart-goal: #e8b469;
     --tone-0: #9fd0cb;
@@ -281,6 +287,7 @@
     --tone-3: #a9c7dc;
     --tone-3-bg: #1e2f3c;
     --focus: #8ad6d0;
+    --tool-mark: var(--accent-ink);
     --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.35);
     --shadow-md: 0 6px 20px rgb(0 0 0 / 0.35);
     --shadow-lg: 0 20px 60px rgb(0 0 0 / 0.5);
@@ -363,8 +370,9 @@
   --chart-grid: #22373b;
   --chart-cross: #3a5256;
   --chart-axis: #98acaf;
-  --chart-bar: #4a7d7f;
-  --chart-bar-met: #3f8a86;
+  --chart-bar: #4c7f82;
+  --chart-bar-met: #62a09c;
+  --chart-today: #7fcdc7;
   --chart-spark: #5e9c99;
   --chart-goal: #e8b469;
   --tone-0: #9fd0cb;
@@ -376,6 +384,7 @@
   --tone-3: #a9c7dc;
   --tone-3-bg: #1e2f3c;
   --focus: #8ad6d0;
+  --tool-mark: var(--accent-ink);
   --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.35);
   --shadow-md: 0 6px 20px rgb(0 0 0 / 0.35);
   --shadow-lg: 0 20px 60px rgb(0 0 0 / 0.5);
@@ -609,6 +618,14 @@ a {
   letter-spacing: 0.14em;
   margin-bottom: var(--space-6);
 }
+/* The piece and the practice screens give that room to the score. The sidebar (or the menu on phones)
+   still links to Preferências and shows whether the data is saved. */
+.main-content:has(> .piece-detail, > .practice-layout) {
+  padding-top: var(--space-7);
+}
+.main-content:has(> .piece-detail, > .practice-layout) > .topbar {
+  display: none;
+}
 .storage-indicator {
   border: 0;
   background: transparent;
@@ -780,7 +797,7 @@ a {
   min-height: 36px;
   padding: var(--space-1) var(--space-3);
   font-size: var(--fs-xs);
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 .btn.light {
   background: var(--feature-btn);
@@ -796,7 +813,7 @@ a {
 .back-link {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   min-height: 32px;
   padding: var(--space-1) 0;
   border: 0;
@@ -829,6 +846,10 @@ a {
 }
 .icon-btn.subtle {
   opacity: 0.8;
+}
+/* Delete and other destructive icons read as such on touch too, not only under a mouse. */
+.icon-btn.danger {
+  color: var(--danger-ink);
 }
 .file-button {
   position: relative;
@@ -906,7 +927,7 @@ a {
   background: var(--surface-3);
   color: var(--ink-muted);
   border-radius: var(--radius-xs);
-  padding: 1px 6px;
+  padding: 1px var(--space-1-5);
   font-size: var(--fs-micro);
   font-weight: 600;
 }
@@ -922,7 +943,7 @@ a {
   background: transparent;
   min-height: 36px;
   padding: var(--space-2) var(--space-1);
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   font-size: var(--fs-sm);
   color: var(--ink-muted);
 }
@@ -930,7 +951,10 @@ a {
   background: var(--surface-raised);
   color: var(--accent);
   font-weight: 600;
-  box-shadow: var(--shadow-sm);
+  /* The outline carries the choice in both themes; the raised fill alone is too faint in the dark one. */
+  box-shadow:
+    var(--shadow-sm),
+    inset 0 0 0 1px var(--segment-ring);
 }
 .rating-buttons {
   display: flex;
@@ -1048,8 +1072,8 @@ textarea {
 input[type='color'] {
   width: 36px;
   height: 36px;
-  padding: 3px;
-  border-radius: 6px;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
 }
 .form-grid {
   display: grid;
@@ -1119,8 +1143,10 @@ input[type='color'] {
 .modal.wide {
   width: min(780px, calc(100vw - 28px));
 }
+/* ::backdrop inherits custom properties only from Safari 17.4 / Chrome 122: keep a literal fallback. */
 .modal::backdrop {
-  background: var(--backdrop);
+  background: var(--backdrop, rgb(16 43 59 / 0.44));
+  -webkit-backdrop-filter: blur(3px);
   backdrop-filter: blur(3px);
 }
 .modal > header {
@@ -1340,7 +1366,7 @@ input[type='color'] {
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 .tone-0 {
   background: var(--tone-0-bg);
@@ -1384,7 +1410,7 @@ input[type='color'] {
   border-radius: var(--radius-xs);
 }
 .bar-track > span.today {
-  background: var(--accent);
+  background: var(--chart-today);
 }
 .week-bars > div > span {
   display: block;
@@ -1435,7 +1461,7 @@ input[type='color'] {
   position: relative;
   padding: 0;
   border: 1.5px solid var(--line-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   background: var(--surface);
   display: grid;
   place-items: center;
@@ -1501,15 +1527,14 @@ input[type='color'] {
   padding: var(--space-5) var(--space-6);
   position: relative;
 }
+/* The card clips its corners, so the ring is drawn inside the cover. */
+.piece-cover:focus-visible {
+  outline-offset: -5px;
+}
 .cover-label {
   font-size: var(--fs-micro);
   letter-spacing: 0.14em;
   font-weight: 600;
-}
-.cover-composer {
-  font-family: var(--font-serif);
-  font-size: var(--fs-lg);
-  font-style: italic;
 }
 .cover-arrow {
   position: absolute;
@@ -1546,7 +1571,7 @@ input[type='color'] {
 }
 .piece-footer > span {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
   font-size: var(--fs-xs);
   color: var(--ink-muted);
@@ -1712,7 +1737,7 @@ input[type='color'] {
 .note-card > span {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   font-size: var(--fs-micro);
   color: var(--accent);
 }
@@ -1793,7 +1818,7 @@ input[type='color'] {
   font-size: var(--fs-xs);
   color: var(--ink-muted);
   display: block;
-  margin: 2px 0 var(--space-4);
+  margin: var(--space-0-5) 0 var(--space-4);
 }
 .metronome-face input[type='range'] {
   width: 75%;
@@ -1834,7 +1859,7 @@ input[type='color'] {
   font-size: var(--fs-xs);
   color: var(--ink-muted);
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: var(--space-1-5);
 }
 .cycle-info strong {
   font-weight: 500;
@@ -1870,14 +1895,14 @@ input[type='color'] {
 .quiet-hint {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   justify-content: center;
   margin-top: var(--space-4);
 }
 .practice-summary {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-1-5);
   margin: var(--space-3) 0 var(--space-5);
   padding-bottom: var(--space-5);
   border-bottom: 1px solid var(--line);
@@ -1920,7 +1945,7 @@ input[type='color'] {
 .practice-tips li p {
   font-size: var(--fs-sm);
   color: var(--ink-muted);
-  margin-top: 6px;
+  margin-top: var(--space-1-5);
 }
 .tip-note {
   display: flex;
@@ -2084,7 +2109,7 @@ input[type='color'] {
   align-items: center;
 }
 .history-row h3 {
-  margin-bottom: 6px;
+  margin-bottom: var(--space-1-5);
 }
 .history-row p {
   font-size: var(--fs-sm);
@@ -2191,7 +2216,7 @@ input[type='color'] {
   margin: var(--space-3) 0;
 }
 .recorder-monitor p {
-  margin: 0 0 6px;
+  margin: 0 0 var(--space-1-5);
 }
 .recorder-level {
   height: 8px;
@@ -2268,6 +2293,10 @@ input[type='color'] {
     background: var(--surface-3);
     color: var(--ink);
   }
+  .icon-btn.danger:hover:not(:disabled) {
+    background: var(--danger-soft);
+    color: var(--danger-ink);
+  }
   .toast .icon-btn:hover:not(:disabled) {
     background: color-mix(in srgb, var(--toast-ink) 12%, transparent);
     color: var(--toast-ink);
@@ -2324,6 +2353,9 @@ input[type='color'] {
   background: var(--danger-ink);
   border-color: var(--danger-ink);
 }
+.icon-btn.danger:active:not(:disabled) {
+  background: var(--danger-soft);
+}
 .icon-btn:active:not(:disabled),
 .tabs > button:active:not(:disabled),
 .hand-switch > button:active:not(:disabled),
@@ -2350,7 +2382,12 @@ input[type='color'] {
   filter: brightness(0.97);
 }
 .link-btn:active:not(:disabled),
-.back-link:active {
+.back-link:active,
+.timestamp:active,
+.text-title:active,
+.storage-indicator:active,
+.brand:active,
+summary:active {
   opacity: 0.7;
 }
 
@@ -2465,20 +2502,30 @@ input[type='color'] {
     display: none;
   }
 }
-/* Tablets: the sidebar becomes an icon rail with short labels, so the score gets the width. */
-@media (min-width: 701px) and (max-width: 1180px) {
+/* Tablets: the sidebar becomes a rail of icons with short labels, so the score gets the width. Touch screens
+   keep the rail up to the 12.9" iPad in landscape (1366px); a mouse gets the full sidebar from 1181px. */
+@media (min-width: 701px) and (max-width: 1180px),
+  (min-width: 701px) and (max-width: 1366px) and (pointer: coarse) {
   :root {
     --sidebar-w: 92px;
     --gutter: 20px;
   }
   .sidebar {
-    padding: max(var(--space-5), env(safe-area-inset-top)) var(--space-2)
-      max(var(--space-5), env(safe-area-inset-bottom)) calc(var(--space-2) + env(safe-area-inset-left));
+    padding: max(var(--space-5), env(safe-area-inset-top)) var(--space-1-5)
+      max(var(--space-5), env(safe-area-inset-bottom)) calc(var(--space-1-5) + env(safe-area-inset-left));
   }
   .sidebar .brand {
     justify-content: center;
   }
-  .sidebar .brand > span,
+  /* The wordmark stays the button's accessible name. */
+  .sidebar .brand > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
   .sidebar-caption,
   .sidebar-note {
     display: none;
@@ -2487,52 +2534,79 @@ input[type='color'] {
     margin-top: var(--space-7);
     gap: var(--space-1);
   }
-  .sidebar nav > button {
+  .sidebar nav > button,
+  .settings-nav {
     flex-direction: column;
     justify-content: center;
     gap: var(--space-1);
     min-height: 64px;
-    padding: var(--space-2) 2px;
+    padding: var(--space-2) var(--space-0-5);
     font-size: var(--fs-micro);
     text-align: center;
     line-height: 1.2;
   }
+  /* The gold dot does not fit under a short label: the active section gets a gold edge instead
+     (6.5:1 on the rail, 9.8:1 in the dark theme). */
   .sidebar .nav-indicator {
     display: none;
+  }
+  .sidebar nav > button.active,
+  .settings-nav.active {
+    box-shadow: inset 3px 0 0 var(--gold);
   }
   .sidebar-bottom {
     padding-top: var(--space-6);
   }
-  /* The gear keeps its accessible name ("Preferências e dados") but shows only the icon. */
-  .settings-nav {
-    justify-content: center;
-    padding: var(--space-3) 0;
-    font-size: 0;
-  }
   .device-state {
-    justify-content: center;
-    padding: var(--space-3) 0 0;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-3) var(--space-0-5) 0;
+    text-align: center;
+    line-height: 1.25;
   }
-  .device-state > span {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
+  .topbar {
+    height: var(--tap);
+    margin-bottom: var(--space-4);
+  }
+  .main-content:has(> .piece-detail, > .practice-layout) {
+    padding-top: var(--space-5);
   }
 }
-/* Portrait tablet: side panels move under the score, which takes the full width. */
-@media (max-width: 1100px) {
+/* Portrait tablet and phones: side panels move under the score, which takes the full width. In landscape
+   (iPad 10.2" at 1080px) the side-by-side layout keeps the score beside its panel instead. */
+@media (max-width: 1100px) and (orientation: portrait), (max-width: 860px) {
   .study-layout,
   .practice-layout.with-score {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .practice-layout.with-score {
+    gap: var(--space-4);
   }
   .study-aside {
     max-height: none;
   }
   .practice-layout.with-score .practice-console {
     max-width: none;
+  }
+}
+/* Portrait tablet: the passage leads and the console follows right under it, so the trecho is on screen
+   before and during practice with the tempo and the play button within one scroll. (Phones keep the console
+   first: their screen cannot show both, and the full-screen score carries the transport.) Keyboard order
+   stays console first. */
+@media (min-width: 701px) and (max-width: 1100px) and (orientation: portrait) {
+  .practice-layout.with-score .practice-score {
+    order: -1;
+    margin-bottom: 0;
+  }
+  .page-heading:has(+ .practice-layout.with-score) {
+    margin-bottom: var(--space-4);
+  }
+  .page-heading:has(+ .practice-layout.with-score) h1 {
+    font-size: var(--fs-2xl);
+    margin-bottom: 0;
+  }
+  .page-heading:has(+ .practice-layout.with-score) p {
+    display: none;
   }
 }
 @media (max-width: 1000px) {
@@ -2636,6 +2710,9 @@ input[type='color'] {
   .topbar {
     height: 44px;
     margin-bottom: var(--space-5);
+  }
+  .main-content:has(> .piece-detail, > .practice-layout) {
+    padding-top: var(--space-4);
   }
   .page-heading {
     align-items: flex-start;
@@ -2770,11 +2847,12 @@ input[type='color'] {
     bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
     min-width: min(280px, calc(100vw - 32px));
   }
-  /* 16px keeps iOS from zooming into a field on focus. */
-  input,
+  /* 16px keeps iOS from zooming into a field on focus. It must win over the denser sizes some screens set
+     on their own fields (search, task and version selects, editors), hence !important. */
+  input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file']),
   select,
   textarea {
-    font-size: var(--fs-md);
+    font-size: var(--fs-md) !important;
   }
 }
 /* ---------- Motion ---------- */

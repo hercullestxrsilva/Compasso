@@ -38,7 +38,7 @@
   color: var(--ink);
 }
 .capture-recovery > .hint {
-  margin: 0 0 6px;
+  margin: 0 0 var(--space-1-5);
 }
 .capture-row {
   display: flex;
@@ -61,7 +61,7 @@
 }
 .capture-info small {
   display: block;
-  margin-top: 3px;
+  margin-top: var(--space-1);
   color: var(--ink-muted);
   font-size: var(--fs-xs);
 }
@@ -92,14 +92,6 @@
 .capture-recovery.inline .capture-actions select {
   flex-basis: 100%;
   max-width: 100%;
-}
-/* The app's danger red (as in .btn.danger); only where these screens use it, and only with a real hover. */
-@media (hover: hover) {
-  .capture-recovery .icon-btn.danger:hover:not(:disabled),
-  .lesson-workspace .icon-btn.danger:hover:not(:disabled) {
-    color: var(--danger-ink);
-    background: var(--danger-soft);
-  }
 }
 
 /* Lesson list */
@@ -149,7 +141,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   min-height: 36px;
   font-size: var(--fs-sm);
   color: var(--ink-muted);
@@ -173,10 +165,10 @@
 }
 .lesson-note-actions {
   display: flex;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 .lesson-note .badge {
-  margin-right: 6px;
+  margin-right: var(--space-1-5);
 }
 .note-edit {
   display: grid;
@@ -214,7 +206,7 @@
 /* Assistant */
 .summary-editor {
   min-height: 140px;
-  margin: 6px 0 var(--space-3);
+  margin: var(--space-1-5) 0 var(--space-3);
   font-size: var(--fs-sm);
 }
 .proposal-questions ul {

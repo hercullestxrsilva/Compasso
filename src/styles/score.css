@@ -16,7 +16,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-1) var(--space-2);
-  padding: 6px var(--space-2);
+  padding: var(--space-1-5) var(--space-2);
   border-bottom: 1px solid var(--line);
   background: var(--surface);
 }
@@ -24,7 +24,7 @@
 .score-toolbar-end {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-0-5);
   min-width: 0;
 }
 .score-toolbar-end {
@@ -33,12 +33,12 @@
 .score-tool {
   min-width: 40px;
   height: 40px;
-  padding: 0 6px;
+  padding: 0 var(--space-1-5);
   display: inline-flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: var(--space-1);
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -52,7 +52,7 @@
 .score-tool.active {
   background: var(--accent);
   color: var(--accent-ink);
-  box-shadow: inset 0 -3px 0 var(--gold);
+  box-shadow: inset 0 -3px 0 var(--tool-mark);
 }
 .score-tool.open {
   background: var(--accent-soft);
@@ -67,7 +67,7 @@
 .score-viewer .score-pager {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 .score-viewer .score-pager > span {
   min-width: 96px;
@@ -79,7 +79,7 @@
 }
 .score-viewer .score-pager-top {
   display: none;
-  margin-right: 6px;
+  margin-right: var(--space-1-5);
 }
 .score-viewer .score-pager > .score-pager-short {
   min-width: 48px;
@@ -87,7 +87,7 @@
 .score-history {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-0-5);
   padding-left: var(--space-2);
   border-left: 1px solid var(--line);
 }
@@ -109,7 +109,7 @@
 @container score (min-width: 620px) and (max-width: 759px) {
   .score-tool {
     min-width: 48px;
-    padding: 0 3px;
+    padding: 0 var(--space-1);
   }
   .score-toolbar-end .score-tool-label {
     display: none;
@@ -132,7 +132,7 @@
   max-height: min(70dvh, 520px);
   overflow: auto;
   display: grid;
-  gap: 2px;
+  gap: var(--space-0-5);
   padding: var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -169,7 +169,7 @@
 }
 .score-menu-check small {
   display: block;
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
   color: var(--ink-muted);
   font-size: var(--fs-xs);
 }
@@ -180,7 +180,7 @@
   border-top: 1px solid var(--line);
 }
 .score-menu-group legend {
-  padding: var(--space-2) var(--space-3) 2px;
+  padding: var(--space-2) var(--space-3) var(--space-0-5);
   color: var(--ink-muted);
   font-size: var(--fs-micro);
   font-weight: 600;
@@ -208,7 +208,7 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px var(--space-3);
+  gap: var(--space-1-5) var(--space-3);
   min-height: 48px;
   padding: var(--space-1) var(--space-3);
   border-bottom: 1px solid var(--line);
@@ -219,7 +219,7 @@
 .score-subgroup {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-0-5);
   padding-right: var(--space-2);
   border-right: 1px solid var(--line);
 }
@@ -263,7 +263,7 @@
 .score-swatches {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 .score-swatch {
   position: relative;
@@ -271,11 +271,16 @@
   height: 28px;
   flex-shrink: 0;
   padding: 0;
-  border: 2px solid var(--surface);
+  /* A paper-white ring: each colour is judged against the page it will be drawn on, in both themes
+     (the dark "Grafite" would vanish on the dark bar otherwise). */
+  border: 2px solid var(--paper-white);
   border-radius: 50%;
   background: var(--swatch);
   box-shadow: 0 0 0 1px var(--line-strong);
   cursor: pointer;
+}
+.score-swatch:active {
+  opacity: 0.7;
 }
 /* Larger hit area than the visible dot. */
 .score-swatch::before {
@@ -383,8 +388,8 @@
 /* Bottom bar: pages, fit and zoom (and the practice transport in full screen). */
 .score-viewer .score-bottom {
   flex-wrap: wrap;
-  gap: 6px var(--space-3);
-  padding: 6px var(--space-3);
+  gap: var(--space-1-5) var(--space-3);
+  padding: var(--space-1-5) var(--space-3);
 }
 .score-zoom {
   display: flex;
@@ -396,7 +401,7 @@
   height: 36px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   padding: 0 var(--space-3);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
@@ -446,7 +451,7 @@
   flex-shrink: 0;
 }
 .score-viewer.is-fullscreen .score-toolbar {
-  padding-top: max(6px, env(safe-area-inset-top));
+  padding-top: max(var(--space-1-5), env(safe-area-inset-top));
   padding-left: max(var(--space-2), env(safe-area-inset-left));
   padding-right: max(var(--space-2), env(safe-area-inset-right));
 }
@@ -456,7 +461,7 @@
   padding-right: max(var(--space-3), env(safe-area-inset-right));
 }
 .score-viewer.is-fullscreen .score-bottom {
-  padding-bottom: max(6px, env(safe-area-inset-bottom));
+  padding-bottom: max(var(--space-1-5), env(safe-area-inset-bottom));
   padding-left: max(var(--space-3), env(safe-area-inset-left));
   padding-right: max(var(--space-3), env(safe-area-inset-right));
   background: var(--surface);
@@ -537,7 +542,7 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px var(--space-4);
+  gap: var(--space-1-5) var(--space-4);
   margin-bottom: var(--space-4);
 }
 .piece-detail .piece-header .back-link {
@@ -564,6 +569,8 @@
   font-size: var(--fs-sm);
 }
 .piece-detail .score-card > .score-card-heading {
+  flex-wrap: wrap;
+  row-gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
 }
 /* Phone: back and edit share the first row, the title takes the second. */
@@ -635,31 +642,12 @@
   margin: 0;
 }
 .segment-history blockquote {
-  margin: 6px 0 2px;
+  margin: var(--space-1-5) 0 var(--space-0-5);
   padding-left: var(--space-2);
   border-left: 2px solid var(--line-strong);
   color: var(--ink);
   font-style: italic;
   white-space: pre-wrap;
-}
-/* Ratings are pills; piece statuses are rectangles. */
-.rating-chip {
-  padding: 1px var(--space-2);
-  border-radius: var(--radius-pill);
-  font-size: var(--fs-micro);
-  font-weight: 600;
-}
-.rating-chip.difficult {
-  background: var(--rating-difficult-bg);
-  color: var(--rating-difficult);
-}
-.rating-chip.improving {
-  background: var(--rating-improving-bg);
-  color: var(--rating-improving);
-}
-.rating-chip.comfortable {
-  background: var(--rating-comfortable-bg);
-  color: var(--rating-comfortable);
 }
 .piece-detail .segment-delete {
   margin-left: auto;
@@ -687,7 +675,7 @@
 /* Score versions */
 .version-list {
   display: grid;
-  gap: 6px;
+  gap: var(--space-1-5);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -695,7 +683,7 @@
 .version-list li {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   min-height: 56px;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--line);
@@ -716,7 +704,7 @@
 }
 .version-info small {
   display: block;
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
   color: var(--ink-muted);
   font-size: var(--fs-xs);
 }
@@ -724,7 +712,7 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-1-5);
   width: 100%;
 }
 .version-rename input {
@@ -737,7 +725,7 @@
 /* Tasks linked to a trecho */
 .task-form {
   display: grid;
-  gap: 6px;
+  gap: var(--space-1-5);
   margin-bottom: var(--space-2);
 }
 .task-form select {
@@ -747,7 +735,7 @@
 }
 .piece-detail .task-row > div small {
   display: block;
-  margin-top: 3px;
+  margin-top: var(--space-1);
   color: var(--ink-muted);
   font-size: var(--fs-xs);
 }

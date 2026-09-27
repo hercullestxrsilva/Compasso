@@ -216,7 +216,6 @@ export function Library({ onOpen, notify }: { onOpen: (id: string) => void; noti
               >
                 <span className="cover-label">PARTITURA</span>
                 <BookOpen size={36} strokeWidth={1} />
-                <span className="cover-composer">{piece.composer || 'Seu repertório'}</span>
                 <ArrowUpRight size={22} className="cover-arrow" />
               </button>
               <div className="piece-info">

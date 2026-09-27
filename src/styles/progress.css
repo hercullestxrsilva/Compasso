@@ -1,35 +1,53 @@
 /* Hoje (plan, weekly goal) and Evolução (tempo charts, comparisons, reviews, lesson report).
    Colours are tokens from styles.css. */
 
-/* Session ratings: their own tints and a pill with a dot, never the piece-status rectangles. */
-.badge[class*='rating-'] {
+/*
+ * Badge roles (base .badge and piece statuses in styles.css):
+ * - piece status: filled rectangle;
+ * - session rating: pill with a dot (.badge.rating-*, and .rating-chip on the trecho history);
+ * - review schedule: outlined rectangle in the info / warning roles, so "revisar hoje" never looks like
+ *   "Estudando".
+ */
+.badge[class*='rating-'],
+.rating-chip {
+  display: inline-flex;
+  align-items: center;
   border-radius: var(--radius-pill);
-  padding-inline: var(--space-2) 10px;
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-2);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
 }
-.badge.rating-difficult {
+.badge.rating-difficult,
+.rating-chip.difficult {
   background: var(--rating-difficult-bg);
   color: var(--rating-difficult);
 }
-.badge.rating-improving {
+.badge.rating-improving,
+.rating-chip.improving {
   background: var(--rating-improving-bg);
   color: var(--rating-improving);
 }
-.badge.rating-comfortable {
+.badge.rating-comfortable,
+.rating-chip.comfortable {
   background: var(--rating-comfortable-bg);
   color: var(--rating-comfortable);
 }
-.badge[class*='rating-']::before {
+.badge[class*='rating-']::before,
+.rating-chip::before {
   content: '';
   width: 6px;
   height: 6px;
+  flex-shrink: 0;
   border-radius: 50%;
   background: currentColor;
-  margin-right: 6px;
+  margin-right: var(--space-2);
 }
 .badge.partial {
   background: transparent;
   border: 1px dashed var(--line-strong);
-  padding: 3px 7px;
+  padding: calc(var(--space-1) - 1px) calc(var(--space-2) - 1px);
 }
 .badge.kind {
   background: var(--surface-3);
@@ -37,13 +55,18 @@
   margin-left: var(--space-2);
   vertical-align: 2px;
 }
+.badge.overdue,
+.badge.due-today {
+  border: 1px solid currentColor;
+  padding: calc(var(--space-1) - 1px) calc(var(--space-2) - 1px);
+}
 .badge.overdue {
   background: var(--warning-soft);
   color: var(--warning);
 }
 .badge.due-today {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--info-soft);
+  color: var(--info);
 }
 
 /* Hoje: stat link, plan */
@@ -56,8 +79,8 @@
 .plan-budget,
 .review-scope {
   display: inline-flex;
-  gap: 2px;
-  padding: 3px;
+  gap: var(--space-0-5);
+  padding: var(--space-1);
   background: var(--surface-3);
   border-radius: var(--radius-md);
 }
@@ -67,7 +90,7 @@
   background: transparent;
   border-radius: var(--radius-sm);
   min-height: 32px;
-  padding: 6px var(--space-3);
+  padding: var(--space-1-5) var(--space-3);
   font-size: var(--fs-xs);
   color: var(--ink-muted);
   white-space: nowrap;
@@ -77,10 +100,13 @@
   background: var(--surface-raised);
   color: var(--ink);
   font-weight: 600;
-  box-shadow: var(--shadow-sm);
+  box-shadow:
+    var(--shadow-sm),
+    inset 0 0 0 1px var(--segment-ring);
 }
 .plan-budget > button:active:not(.active),
 .review-scope > button:active:not(.active) {
+  background: var(--surface-2);
   color: var(--ink);
 }
 .plan-list {
@@ -119,7 +145,7 @@
   display: block;
   color: var(--ink-muted);
   font-size: var(--fs-xs);
-  margin-top: 3px;
+  margin-top: var(--space-1);
 }
 .plan-reasons {
   display: flex;
@@ -133,7 +159,7 @@
   color: var(--ink-muted);
   background: var(--surface-3);
   border-radius: var(--radius-pill);
-  padding: 2px var(--space-2);
+  padding: var(--space-0-5) var(--space-2);
 }
 .plan-reason.overdue {
   background: var(--warning-soft);
@@ -163,7 +189,7 @@
 .plan-saved {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   padding: var(--space-1) 0;
   color: var(--accent);
   font-weight: 600;
@@ -184,7 +210,7 @@
 }
 .plan-later ul {
   list-style: none;
-  margin: 6px 0 0;
+  margin: var(--space-1-5) 0 0;
   padding: 0;
 }
 .plan-later li {
@@ -206,7 +232,7 @@
   display: block;
   color: var(--ink-muted);
   font-size: var(--fs-xs);
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
 }
 
 /* Hoje: weekly goal on the week chart */
@@ -262,7 +288,7 @@
   background: var(--chart-bar-met);
 }
 .week-panel .bar-track > span.today {
-  background: var(--accent);
+  background: var(--chart-today);
 }
 .goal-line {
   position: absolute;
@@ -337,7 +363,7 @@
 .tempo-panel .tempo-heading {
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 .tempo-panel .section-heading .hint {
   margin: 0;
@@ -401,7 +427,7 @@
   top: 26px;
   transform: translateX(-50%);
   display: grid;
-  gap: 2px;
+  gap: var(--space-0-5);
   min-width: 150px;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
@@ -440,7 +466,7 @@
 .chart-table th,
 .chart-table td {
   text-align: left;
-  padding: 6px var(--space-3) 6px 0;
+  padding: var(--space-1-5) var(--space-3) var(--space-1-5) 0;
   border-bottom: 1px solid var(--line-soft);
 }
 .chart-table th {
@@ -449,7 +475,7 @@
 }
 .tempo-list {
   list-style: none;
-  margin: 0 0 6px;
+  margin: 0 0 var(--space-1-5);
   padding: 0;
 }
 .tempo-row {
@@ -479,7 +505,7 @@
   display: block;
   font-size: var(--fs-xs);
   color: var(--ink-muted);
-  margin-top: 3px;
+  margin-top: var(--space-1);
 }
 .tempo-change {
   font-size: var(--fs-sm);
@@ -520,14 +546,14 @@
 }
 .compare-take audio {
   width: 100%;
-  margin-top: 6px;
+  margin-top: var(--space-1-5);
 }
 .take-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px var(--space-3);
-  margin: 0 0 6px;
+  gap: var(--space-1-5) var(--space-3);
+  margin: 0 0 var(--space-1-5);
   font-size: var(--fs-xs);
   color: var(--ink-muted);
 }
@@ -552,13 +578,13 @@
   background: var(--surface-3);
   color: var(--ink-muted);
   border-radius: var(--radius-xs);
-  padding: 1px 6px;
+  padding: 1px var(--space-1-5);
 }
 .review-card h3 {
   margin: var(--space-3) 0 var(--space-1);
 }
 .review-card .hint {
-  margin: 0 0 6px;
+  margin: 0 0 var(--space-1-5);
 }
 /* Overdue is also written in the badge; the edge only reinforces it. */
 .review-card.overdue {
@@ -578,7 +604,7 @@
 .review-quick {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-1-5);
   margin-bottom: var(--space-4);
 }
 

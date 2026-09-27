@@ -62,7 +62,7 @@
   min-width: 1ch;
 }
 .practice-console .metronome-face {
-  padding: var(--space-5) 6px var(--space-1);
+  padding: var(--space-5) var(--space-1-5) var(--space-1);
   border-radius: var(--radius-lg);
 }
 .practice-console .metronome-face .phase-pill {
@@ -94,7 +94,7 @@
 }
 .practice-console .bpm-control > div > span {
   font-size: var(--fs-sm);
-  margin: 2px 0 var(--space-3);
+  margin: var(--space-0-5) 0 var(--space-3);
 }
 .timer-readout {
   margin: var(--space-3) 0 var(--space-2);
@@ -121,7 +121,7 @@
   font-size: var(--fs-sm);
   line-height: 1.5;
   color: var(--ink-muted);
-  margin: 0 0 6px;
+  margin: 0 0 var(--space-1-5);
 }
 .metronome-tools {
   display: flex;
@@ -152,7 +152,7 @@
 .practice-console .beat-dots,
 .practice-hud .beat-dots {
   align-items: center;
-  gap: 14px;
+  gap: var(--space-4);
   margin: var(--space-2) 0;
 }
 .practice-console .beat-dots > span,
@@ -231,52 +231,98 @@
   font-size: var(--fs-md);
 }
 
-/* Console under a full-width score (portrait tablet): the stage spreads over two columns so the
-   score starts higher. Tempo and pulse on the left, count and transport on the right. */
-.practice-layout.with-score .practice-console {
+/* The console is a size container: its own width, not the window's, decides how the stage is laid out. */
+.practice-console {
   container: console / inline-size;
 }
-@container console (min-width: 720px) {
-  .practice-console .metronome-face {
+/* A narrow console (landscape iPad beside the score, phones): the tempo figure shrinks with the column so
+   a three-digit BPM and both ± buttons stay inside the card. */
+@container console (max-width: 359px) {
+  .practice-console .bpm-control {
+    gap: var(--space-2);
+  }
+  .practice-console .bpm-control > div > strong {
+    font-size: min(var(--fs-display), 22cqi);
+  }
+}
+
+/* Console under a full-width score (portrait tablet, from the 744px iPad mini up): the stage spreads over
+   two columns so it stays short. Tempo and pulse on the left, count and transport on the right. */
+@container console (min-width: 560px) {
+  .practice-layout.with-score .metronome-face {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     column-gap: var(--space-6);
     align-items: center;
     padding-inline: var(--space-4);
   }
-  .practice-console .metronome-face > * {
+  .practice-layout.with-score .metronome-face > * {
     grid-column: 1;
   }
-  .practice-console .metronome-face > .phase-pill {
+  .practice-layout.with-score .metronome-face > .phase-pill {
     justify-self: center;
   }
-  .practice-console .metronome-face > .cycle-info,
-  .practice-console .metronome-face > .session-progress,
-  .practice-console .metronome-face > .transport,
-  .practice-console .metronome-face > .error-box,
-  .practice-console .metronome-face > .attempt-recorder,
-  .practice-console .metronome-face > .quiet-hint {
+  .practice-layout.with-score .metronome-face > .cycle-info,
+  .practice-layout.with-score .metronome-face > .session-progress,
+  .practice-layout.with-score .metronome-face > .transport,
+  .practice-layout.with-score .metronome-face > .error-box,
+  .practice-layout.with-score .metronome-face > .attempt-recorder,
+  .practice-layout.with-score .metronome-face > .quiet-hint {
     grid-column: 2;
   }
-  .practice-console .metronome-face > .cycle-info {
+  .practice-layout.with-score .metronome-face > .cycle-info {
     grid-row: 1 / span 2;
     align-self: end;
   }
-  .practice-console .metronome-face > .session-progress {
+  .practice-layout.with-score .metronome-face > .session-progress {
     grid-row: 3;
   }
-  .practice-console .metronome-face > .transport {
+  .practice-layout.with-score .metronome-face > .transport {
     grid-row: 4 / span 2;
     align-self: start;
   }
-  .practice-console .metronome-face > .attempt-recorder {
+  .practice-layout.with-score .metronome-face > .attempt-recorder {
     grid-row: 6 / span 2;
     align-self: start;
     border-top: 0;
     margin-top: 0;
   }
-  .practice-console .metronome-face > .quiet-hint {
+  .practice-layout.with-score .metronome-face > .quiet-hint {
     grid-row: 8;
+  }
+  /* Half a console: a three-digit tempo still fits between the ± buttons on the 744px iPad mini. */
+  .practice-layout.with-score .bpm-control > div > strong {
+    font-size: min(var(--fs-display), 10.5cqi);
+  }
+  /* Setup in pairs: trecho and intention, goal and suggestion, hand and sound. */
+  .practice-layout.with-score .practice-selector {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: var(--space-4);
+    align-items: start;
+  }
+  .practice-layout.with-score .practice-selector > .field:first-child {
+    grid-area: 1 / 1;
+  }
+  .practice-layout.with-score .practice-selector > .field:last-of-type {
+    grid-area: 1 / 2;
+    margin: 0 0 var(--space-4);
+  }
+  .practice-layout.with-score .practice-selector > .practice-goal {
+    grid-area: 2 / 1;
+    margin: 0 0 var(--space-3);
+  }
+  .practice-layout.with-score .practice-selector > .intention-suggestion {
+    grid-area: 2 / 2;
+    justify-self: start;
+    margin: 0 0 var(--space-3);
+  }
+  .practice-layout.with-score .practice-selector > .hand-switch {
+    grid-area: 3 / 1;
+  }
+  .practice-layout.with-score .practice-selector > .hand-switch.sound-switch {
+    grid-area: 3 / 2;
+    margin-top: 0;
   }
 }
 
@@ -285,7 +331,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 .sound-switch {
   margin-top: var(--space-3);
@@ -295,7 +341,7 @@
 }
 .intention-suggestion {
   text-align: left;
-  margin: -6px 0 var(--space-2);
+  margin: calc(-1 * var(--space-1-5)) 0 var(--space-2);
 }
 .practice-now {
   display: flex;
@@ -315,7 +361,7 @@
 }
 .practice-now p {
   flex-basis: 100%;
-  margin: 2px 0 0;
+  margin: var(--space-0-5) 0 0;
   font-size: var(--fs-sm);
   color: var(--ink);
 }
@@ -377,7 +423,7 @@
 .routine-progress li {
   flex: 1;
   height: 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-pill);
   background: var(--surface-3);
 }
 .routine-progress li.done {
@@ -396,8 +442,8 @@
 .transition-next {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin: 0 0 6px;
+  gap: var(--space-0-5);
+  margin: 0 0 var(--space-1-5);
 }
 .transition-next strong {
   font-size: var(--fs-xl);
@@ -524,7 +570,7 @@
   float: left;
   width: 100%;
   padding: 0;
-  margin-bottom: 6px;
+  margin-bottom: var(--space-1-5);
 }
 .cycle-settings legend + * {
   clear: both;
@@ -585,7 +631,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-2) var(--space-3);
-  margin-bottom: 6px;
+  margin-bottom: var(--space-1-5);
 }
 .routine-card-head h3 {
   margin: 0;
@@ -655,13 +701,13 @@
 .routine-edit-fields > span {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 .routine-number {
   width: 76px;
 }
 .step-error {
-  margin: 6px 0 0;
+  margin: var(--space-1-5) 0 0;
   font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--danger-ink);
@@ -679,7 +725,7 @@
 .preset-list li {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   padding: var(--space-3) 0;
   border-bottom: 1px solid var(--line);
 }
@@ -757,8 +803,8 @@
 }
 @media (max-width: 700px) {
   .practice-hud {
-    gap: 6px var(--space-3);
-    padding: 6px var(--space-3);
+    gap: var(--space-1-5) var(--space-3);
+    padding: var(--space-1-5) var(--space-3);
   }
   .hud-stat {
     font-size: var(--fs-xl);
