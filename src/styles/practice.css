@@ -449,6 +449,10 @@
 .cycle-settings .hint {
   margin: 0 0 12px;
 }
+.cycle-settings .ramp-warning {
+  color: #8a5a00;
+  font-weight: 600;
+}
 .cycle-note {
   background: #f5f8f8;
   border-radius: 8px;
@@ -487,8 +491,7 @@
   font-weight: 600;
 }
 .number-field input[aria-invalid='true'],
-.number-compact input[aria-invalid='true'],
-.routine-bpm[aria-invalid='true'] {
+.routine-number[aria-invalid='true'] {
   border-color: #b3261e;
   outline-color: #b3261e;
 }
@@ -571,9 +574,14 @@
   align-items: center;
   gap: 6px;
 }
-.number-compact input,
-.routine-bpm {
+.routine-number {
   width: 76px;
+}
+.step-error {
+  margin: 6px 0 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #9b2c24;
 }
 .danger-link {
   color: #a23a3a;
@@ -639,7 +647,12 @@
   .routine-card .btn,
   .routine-add .btn,
   .preset-list .btn,
-  .modal-actions.cycle-footer .btn {
+  .modal-actions.cycle-footer .btn,
+  /* .btn.small (35px) in styles.css comes later with the same weight: small buttons need their own rule. */
+  .practice-console .btn.small,
+  .routine-card .btn.small,
+  .routine-add .btn.small,
+  .btn.small.routines-new {
     min-height: 44px;
   }
   .practice-console .hand-switch > button,
@@ -655,8 +668,7 @@
   .practice-console input[type='range'] {
     min-height: 44px;
   }
-  .number-compact input,
-  .routine-bpm,
+  .routine-number,
   .routine-edit-fields select,
   .routine-add input,
   .routine-add select {

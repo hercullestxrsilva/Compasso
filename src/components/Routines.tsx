@@ -1,50 +1,119 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { ListMusic, Plus, Play, ArrowUp, ArrowDown, Trash2 } from 'lucide-react';
 import { db } from '../db';
-import { hands, uid, type Hand, type Routine, type RoutineItem } from '../domain';
-import { groupByPiece, parseNumber, plural } from '../practice/setup';
+import { hands, uid, type Hand, type Routine, type RoutineItem, type Segment } from '../domain';
+import { groupByPiece, parseNumber, plural, settleNumber } from '../practice/setup';
 import { resolveStep, routineMinutes, stepDetail } from '../practice/routine';
 import { Modal, Field, Empty, errorText, useConfirm, type Notify } from './common';
-import NumberField from './practice/NumberField';
+import { useNumberDraft } from './practice/NumberField';
 import '../styles/practice.css';
 
-/** Optional BPM for a step: empty means "the segment's own BPM" (or no metronome for a free item). */
-function OptionalBpm({
-  label,
-  value,
-  placeholder,
+const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
+
+/**
+ * Minutes, hand and BPM of one routine step. Typed values are kept as drafts; what is wrong is written under
+ * the row (not in a tooltip, which the iPad cannot show) and settled on blur.
+ */
+function StepFields({
+  item,
+  segment,
+  n,
   onChange,
 }: {
-  label: string;
-  value?: number;
-  placeholder: string;
-  onChange: (value: number | undefined) => void;
+  item: RoutineItem;
+  segment?: Segment;
+  n: number;
+  onChange: (patch: Partial<RoutineItem>) => void;
 }) {
-  const [text, setText] = useState(value === undefined ? '' : String(value));
-  const error = text.trim() ? parseNumber(text, 20, 300).error : undefined;
+  const errorId = useId();
+  // Fractional minutes (7,5) are valid in saved routines and backups.
+  const minutes = useNumberDraft(item.minutes, 1, 60, false, value => onChange({ minutes: value }));
+  const bpmString = (bpm?: number) => (bpm === undefined ? '' : String(bpm));
+  const [bpmText, setBpmText] = useState(bpmString(item.bpm)),
+    [bpmShown, setBpmShown] = useState(item.bpm);
+  const parseBpm = (text: string): { value?: number; error?: string } =>
+    text.trim() ? parseNumber(text, 20, 300) : {};
+  if (item.bpm !== bpmShown) {
+    setBpmShown(item.bpm);
+    if (parseBpm(bpmText).value !== item.bpm) setBpmText(bpmString(item.bpm));
+  }
+  const bpmError = parseBpm(bpmText).error;
+  const minutesMessage = minutes.error && `Minutos: ${lowerFirst(minutes.error)}`;
+  const bpmMessage =
+    bpmError &&
+    `BPM: de 20 a 300, ou vazio ${item.segmentId ? 'para usar o do trecho' : 'para só cronômetro'}.`;
   return (
-    <input
-      type="text"
-      inputMode="numeric"
-      className="routine-bpm"
-      aria-label={label}
-      aria-invalid={error ? true : undefined}
-      title={error ?? 'De 20 a 300, ou vazio'}
-      placeholder={placeholder}
-      value={text}
-      onChange={e => {
-        setText(e.target.value);
-        const parsed = parseNumber(e.target.value, 20, 300);
-        if (!e.target.value.trim()) onChange(undefined);
-        else if (parsed.value !== undefined) onChange(parsed.value);
-      }}
-      onBlur={() => {
-        if (text.trim() && error) {
-          setText(value === undefined ? '' : String(value));
-        }
-      }}
-    />
+    <>
+      <div className="routine-edit-fields">
+        <span>
+          <span aria-hidden="true">Minutos</span>
+          <input
+            type="text"
+            inputMode="decimal"
+            enterKeyHint="done"
+            autoComplete="off"
+            className="routine-number"
+            aria-label={`Minutos do passo ${n}`}
+            aria-invalid={minutesMessage ? true : undefined}
+            aria-describedby={minutesMessage ? errorId : undefined}
+            value={minutes.text}
+            onChange={e => minutes.change(e.target.value)}
+            onBlur={minutes.settle}
+          />
+        </span>
+        <span>
+          <span aria-hidden="true">Mão</span>
+          <select
+            aria-label={`Mão do passo ${n}`}
+            value={item.hand ?? ''}
+            onChange={e => onChange({ hand: (e.target.value || undefined) as Hand | undefined })}
+          >
+            <option value="">
+              {segment ? `Do trecho (${hands[segment.hand]})` : item.segmentId ? '—' : 'Ambas'}
+            </option>
+            {Object.entries(hands).map(([key, name]) => (
+              <option key={key} value={key}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </span>
+        <span>
+          <span aria-hidden="true">BPM</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            enterKeyHint="done"
+            autoComplete="off"
+            className="routine-number"
+            aria-label={`BPM do passo ${n}`}
+            aria-invalid={bpmMessage ? true : undefined}
+            aria-describedby={bpmMessage ? errorId : undefined}
+            placeholder={segment ? String(segment.bpm) : item.segmentId ? '' : 'sem'}
+            value={bpmText}
+            onChange={e => {
+              setBpmText(e.target.value);
+              const parsed = parseBpm(e.target.value);
+              if (!parsed.error && parsed.value !== item.bpm) onChange({ bpm: parsed.value });
+            }}
+            onBlur={() => {
+              if (!bpmError) return;
+              // Out of range: the nearest valid tempo. Not a number: back to what was saved.
+              const settled = settleNumber(bpmText, 20, 300, true, NaN);
+              if (Number.isNaN(settled)) return setBpmText(bpmString(item.bpm));
+              setBpmText(String(settled));
+              if (settled !== item.bpm) onChange({ bpm: settled });
+            }}
+          />
+        </span>
+      </div>
+      {(minutesMessage || bpmMessage) && (
+        <p id={errorId} className="field-error step-error">
+          {[minutesMessage, bpmMessage].filter(Boolean).join(' ')}
+        </p>
+      )}
+    </>
   );
 }
 
@@ -233,52 +302,13 @@ export default function Routines({
                           <Trash2 size={16} />
                         </button>
                       </div>
-                      <div className="routine-edit-fields">
-                        <span>
-                          <span aria-hidden="true">Minutos</span>
-                          <NumberField
-                            compact
-                            label={`Minutos do passo ${n}`}
-                            value={item.minutes}
-                            min={1}
-                            max={60}
-                            onChange={minutes => setItem(index, { minutes })}
-                          />
-                        </span>
-                        <span>
-                          <span aria-hidden="true">Mão</span>
-                          <select
-                            aria-label={`Mão do passo ${n}`}
-                            value={item.hand ?? ''}
-                            onChange={e =>
-                              setItem(index, { hand: (e.target.value || undefined) as Hand | undefined })
-                            }
-                          >
-                            <option value="">
-                              {segment
-                                ? `Do trecho (${hands[segment.hand]})`
-                                : item.segmentId
-                                  ? '—'
-                                  : 'Ambas'}
-                            </option>
-                            {Object.entries(hands).map(([key, name]) => (
-                              <option key={key} value={key}>
-                                {name}
-                              </option>
-                            ))}
-                          </select>
-                        </span>
-                        <span>
-                          <span aria-hidden="true">BPM</span>
-                          <OptionalBpm
-                            key={`${index}-${item.segmentId ?? item.label}`}
-                            label={`BPM do passo ${n}`}
-                            value={item.bpm}
-                            placeholder={segment ? String(segment.bpm) : item.segmentId ? '' : 'sem'}
-                            onChange={bpm => setItem(index, { bpm })}
-                          />
-                        </span>
-                      </div>
+                      <StepFields
+                        key={`${index}-${item.segmentId ?? item.label}`}
+                        item={item}
+                        segment={segment}
+                        n={n}
+                        onChange={patch => setItem(index, patch)}
+                      />
                     </li>
                   );
                 })}
@@ -310,7 +340,10 @@ export default function Routines({
                 Monte a sequência do dia com trechos e atividades livres, como escalas. Ao começar, cada passo
                 dura o tempo marcado e o próximo começa sozinho depois de uma pequena pausa.
               </p>
-              <button className="btn small" onClick={() => setEditing({ id: uid(), title: '', items: [] })}>
+              <button
+                className="btn small routines-new"
+                onClick={() => setEditing({ id: uid(), title: '', items: [] })}
+              >
                 <Plus size={16} />
                 Nova rotina
               </button>

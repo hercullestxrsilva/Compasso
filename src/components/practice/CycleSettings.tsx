@@ -150,17 +150,35 @@ export default function CycleSettings({
               <input
                 type="checkbox"
                 checked={draft.increaseEvery > 0}
-                onChange={e => set('increaseEvery', e.target.checked ? 2 : 0)}
+                onChange={e => {
+                  const on = e.target.checked;
+                  // A limit at or below the starting tempo would make the ramp do nothing.
+                  setDraft(c =>
+                    on
+                      ? {
+                          ...c,
+                          increaseEvery: 2,
+                          targetBpm: c.targetBpm > c.bpm ? c.targetBpm : Math.min(300, c.bpm + 10),
+                        }
+                      : { ...c, increaseEvery: 0 },
+                  );
+                }}
               />
               Aumentar o andamento aos poucos
             </label>
             {draft.increaseEvery > 0 && (
               <>
-                <p className="hint">
-                  +{draft.increaseBpm} BPM a cada{' '}
-                  {draft.increaseEvery === 1 ? 'repetição' : `${draft.increaseEvery} repetições`}, até{' '}
-                  {Math.max(draft.targetBpm, draft.bpm)} BPM.
-                </p>
+                {draft.targetBpm > draft.bpm ? (
+                  <p className="hint">
+                    +{draft.increaseBpm} BPM a cada{' '}
+                    {draft.increaseEvery === 1 ? 'repetição' : `${draft.increaseEvery} repetições`}, até{' '}
+                    {draft.targetBpm} BPM.
+                  </p>
+                ) : (
+                  <p className="hint ramp-warning">
+                    “Até” está igual ou abaixo do BPM inicial ({draft.bpm}): o andamento não vai subir.
+                  </p>
+                )}
                 <div className="form-grid three">
                   <NumberField
                     label="A cada quantas repetições"
@@ -251,8 +269,8 @@ export default function CycleSettings({
           onClick={() => {
             const parsed = configSchema.safeParse(draft);
             if (!parsed.success) return setError('Revise os valores destacados antes de aplicar.');
-            // A timer is always measured in seconds.
-            onApply(timer ? { ...draft, mode: 'seconds' } : draft, resume);
+            // A timer counts seconds by itself; `mode` stays for when the metronome comes back.
+            onApply(draft, resume);
           }}
         >
           Aplicar

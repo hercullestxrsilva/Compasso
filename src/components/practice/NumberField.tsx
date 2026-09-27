@@ -1,10 +1,43 @@
 import { useId, useState } from 'react';
 import { parseNumber, settleNumber } from '../../practice/setup';
 
+const show = (value: number, integer: boolean) => (integer ? String(value) : String(value).replace('.', ','));
+
 /**
- * A number input that keeps what the student types (so "120" can be typed over "60") and only settles on
- * blur: valid values are applied as they are typed, out-of-range text shows a hint and is clamped on blur.
+ * What the student is typing in a number input, kept as text so "120" can be typed over "60": valid values are
+ * applied as they are typed, out-of-range text reports an error and is clamped on blur.
  */
+export function useNumberDraft(
+  value: number,
+  min: number,
+  max: number,
+  integer: boolean,
+  onChange: (value: number) => void,
+) {
+  const [text, setText] = useState(() => show(value, integer)),
+    [shown, setShown] = useState(value);
+  if (value !== shown) {
+    // The value changed elsewhere (a preset, tap tempo…): show it unless the draft already means it.
+    setShown(value);
+    if (parseNumber(text, min, max, integer).value !== value) setText(show(value, integer));
+  }
+  return {
+    text,
+    error: parseNumber(text, min, max, integer).error,
+    change: (next: string) => {
+      setText(next);
+      const parsed = parseNumber(next, min, max, integer);
+      if (parsed.value !== undefined && parsed.value !== value) onChange(parsed.value);
+    },
+    settle: () => {
+      const settled = settleNumber(text, min, max, integer, value);
+      setText(show(settled, integer));
+      if (settled !== value) onChange(settled);
+    },
+  };
+}
+
+/** A labelled number field with its range (or what is wrong) always visible under it. */
 export default function NumberField({
   label,
   value,
@@ -13,7 +46,6 @@ export default function NumberField({
   onChange,
   integer = true,
   hint,
-  compact = false,
 }: {
   label: string;
   value: number;
@@ -22,48 +54,25 @@ export default function NumberField({
   onChange: (value: number) => void;
   integer?: boolean;
   hint?: string;
-  /** Input only (the label becomes its accessible name), for tight rows such as routine steps. */
-  compact?: boolean;
 }) {
   const id = useId();
-  const [text, setText] = useState(String(value)),
-    [shown, setShown] = useState(value);
-  if (value !== shown) {
-    // The value changed elsewhere (a preset, tap tempo…): show it unless the draft already means it.
-    setShown(value);
-    if (parseNumber(text, min, max, integer).value !== value) setText(String(value));
-  }
-  const error = parseNumber(text, min, max, integer).error;
-  const input = (
-    <input
-      type="text"
-      inputMode={integer ? 'numeric' : 'decimal'}
-      enterKeyHint="done"
-      autoComplete="off"
-      value={text}
-      aria-label={compact ? label : undefined}
-      aria-invalid={error ? true : undefined}
-      aria-describedby={compact ? undefined : `${id}-hint`}
-      title={compact ? (error ?? `De ${min} a ${max}`) : undefined}
-      onChange={e => {
-        setText(e.target.value);
-        const parsed = parseNumber(e.target.value, min, max, integer);
-        if (parsed.value !== undefined && parsed.value !== value) onChange(parsed.value);
-      }}
-      onBlur={() => {
-        const settled = settleNumber(text, min, max, integer, value);
-        setText(String(settled));
-        if (settled !== value) onChange(settled);
-      }}
-    />
-  );
-  if (compact) return <span className="number-compact">{input}</span>;
+  const draft = useNumberDraft(value, min, max, integer, onChange);
   return (
     <label className="field number-field">
       <span>{label}</span>
-      {input}
-      <small id={`${id}-hint`} className={error ? 'field-error' : undefined}>
-        {error ?? hint ?? `De ${min} a ${max}.`}
+      <input
+        type="text"
+        inputMode={integer ? 'numeric' : 'decimal'}
+        enterKeyHint="done"
+        autoComplete="off"
+        value={draft.text}
+        aria-invalid={draft.error ? true : undefined}
+        aria-describedby={`${id}-hint`}
+        onChange={e => draft.change(e.target.value)}
+        onBlur={draft.settle}
+      />
+      <small id={`${id}-hint`} className={draft.error ? 'field-error' : undefined}>
+        {draft.error ?? hint ?? `De ${min} a ${max}.`}
       </small>
     </label>
   );
