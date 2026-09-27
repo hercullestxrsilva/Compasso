@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   ArrowLeft,
@@ -7,16 +7,36 @@ import {
   Pencil,
   MessageSquare,
   FileUp,
+  FileMusic,
   Check,
   Trash2,
   Focus,
   CalendarDays,
+  Layers,
+  SquareDashed,
 } from 'lucide-react';
 import { db, storeAsset } from '../db';
-import { now, uid, hands, statuses, localDay, type Segment, type Region, type Hand } from '../domain';
-import { Modal, Field, Empty, Badge, ErrorBox, errorText } from './common';
+import {
+  now,
+  uid,
+  hands,
+  statuses,
+  localDay,
+  formatDate,
+  type Segment,
+  type Region,
+  type Hand,
+  type Score,
+} from '../domain';
+import { Modal, Field, Empty, Badge, ErrorBox, errorText, useConfirm, type Notify } from './common';
 import { PieceForm } from './Library';
 import ScoreViewer from './ScoreViewer';
+import { forgetHistory } from '../annotation-history';
+import { forgetViewState, loadLastScore, saveLastScore } from '../score-view';
+import { plural, ratingLabels, relativeDay, segmentStats, type SegmentStats } from '../segment-stats';
+import '../styles/score.css';
+
+const scoreTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
 
 export function SegmentForm({
   pieceId,
@@ -42,13 +62,14 @@ export function SegmentForm({
   const [review, setReview] = useState(segment?.reviewDate ?? ''),
     [error, setError] = useState('');
   return (
-    <Modal title={segment ? 'Editar trecho' : 'Novo trecho de estudo'} onClose={onClose}>
+    <Modal guard title={segment ? 'Editar trecho' : 'Novo trecho de estudo'} onClose={onClose}>
       <form
         onSubmit={async e => {
           e.preventDefault();
           try {
             const id = segment?.id ?? uid();
             await db.segments.put({
+              ...segment,
               id,
               pieceId,
               scoreId,
@@ -61,7 +82,6 @@ export function SegmentForm({
               reviewDate: review,
               regions: segment?.regions ?? (region ? [region] : []),
               createdAt: segment?.createdAt ?? now(),
-              rating: segment?.rating,
             });
             onSaved(id);
             onClose();
@@ -78,6 +98,7 @@ export function SegmentForm({
             onChange={e => setTitle(e.target.value)}
             placeholder="Ex.: Entrada da mão esquerda"
             autoFocus
+            data-autofocus
           />
         </Field>
         <div className="form-grid">
@@ -141,6 +162,9 @@ export function SegmentForm({
         </Field>
         <ErrorBox message={error} />
         <footer className="modal-actions">
+          <button type="button" className="btn secondary" onClick={onClose}>
+            Cancelar
+          </button>
           <button className="btn" disabled={!title.trim()}>
             Salvar trecho
           </button>
@@ -149,6 +173,211 @@ export function SegmentForm({
     </Modal>
   );
 }
+
+function SegmentHistory({ stats }: { stats?: SegmentStats }) {
+  if (!stats) return <p className="segment-history unpracticed">Ainda não praticado.</p>;
+  const minutes = Math.round(stats.totalSeconds / 60);
+  return (
+    <div className="segment-history">
+      <p>
+        {plural(stats.count, 'sessão', 'sessões')} · última {relativeDay(stats.lastAt)}
+        {minutes > 0 && ` · ${minutes} min`}
+      </p>
+      <p>
+        Última prática a {stats.lastBpm} BPM
+        {stats.bestBpm > stats.lastBpm && ` · melhor ${stats.bestBpm} BPM`}
+      </p>
+      {stats.lastRating && (
+        <p>
+          Última avaliação:
+          <span className={`rating-chip ${stats.lastRating}`}>{ratingLabels[stats.lastRating]}</span>
+        </p>
+      )}
+      {stats.lastNote && <blockquote>“{stats.lastNote}”</blockquote>}
+      {stats.nextStep && (
+        <p>
+          <strong>Próximo passo:</strong> {stats.nextStep}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ImportScoreButton({
+  onFile,
+  big = false,
+}: {
+  onFile: (file: File) => void | Promise<void>;
+  big?: boolean;
+}) {
+  return (
+    <label className={`btn file-button ${big ? 'score-import-big' : 'small secondary'}`}>
+      {big ? <FileUp size={20} /> : <Plus size={16} />}
+      {big ? 'Importar partitura (PDF ou imagem)' : 'Importar'}
+      <input
+        type="file"
+        accept={scoreTypes.join(',')}
+        aria-label={big ? undefined : 'Importar outra versão da partitura'}
+        onChange={async e => {
+          const file = e.target.files?.[0];
+          e.target.value = '';
+          if (file) await onFile(file);
+        }}
+      />
+    </label>
+  );
+}
+
+function ScoreVersions({
+  scores,
+  segments,
+  activeId,
+  onClose,
+  onDeleted,
+  notify,
+}: {
+  scores: Score[];
+  segments: Segment[];
+  activeId?: string;
+  onClose: () => void;
+  onDeleted: (id: string) => void;
+  notify: Notify;
+}) {
+  const confirm = useConfirm();
+  const counts =
+    useLiveQuery(
+      async () =>
+        new Map(
+          await Promise.all(
+            scores.map(
+              async s => [s.id, await db.annotations.where('scoreId').equals(s.id).count()] as const,
+            ),
+          ),
+        ),
+      [scores.map(s => s.id).join()],
+    ) ?? new Map<string, number>();
+  const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
+  const remove = async (score: Score) => {
+    const marks = counts.get(score.id) ?? 0,
+      linked = segments.filter(s => s.scoreId === score.id).length;
+    const ok = await confirm({
+      title: 'Excluir esta versão?',
+      message: (
+        <>
+          <p>
+            {marks === 0
+              ? `“${score.title}” será excluída deste dispositivo.`
+              : marks === 1
+                ? `“${score.title}” e a marcação feita nela serão excluídas deste dispositivo.`
+                : `“${score.title}” e as ${marks} marcações feitas nela serão excluídas deste dispositivo.`}{' '}
+            Esta ação não pode ser desfeita.
+          </p>
+          {linked > 0 && (
+            <p>
+              {linked === 1
+                ? 'O trecho ligado a ela continua na lista, sem a marcação na partitura.'
+                : `Os ${linked} trechos ligados a ela continuam na lista, sem a marcação na partitura.`}
+            </p>
+          )}
+        </>
+      ),
+      confirmLabel: 'Excluir versão',
+      danger: true,
+    });
+    if (!ok) return;
+    const remaining = scores.find(s => s.id !== score.id);
+    try {
+      await db.transaction('rw', [db.scores, db.annotations, db.assets, db.segments], async () => {
+        await db.annotations.where('scoreId').equals(score.id).delete();
+        await db.segments
+          .where('scoreId')
+          .equals(score.id)
+          .modify({ regions: [], scoreId: remaining?.id ?? '' });
+        await db.scores.delete(score.id);
+        if (!(await db.scores.where('assetId').equals(score.assetId).count()))
+          await db.assets.delete(score.assetId);
+      });
+      forgetHistory(score.id);
+      forgetViewState(score.id);
+      onDeleted(score.id);
+      notify('Versão da partitura excluída.');
+    } catch (err) {
+      notify(`Não foi possível excluir a versão. ${errorText(err)}`, 'error');
+    }
+  };
+  return (
+    <Modal title="Versões da partitura" onClose={onClose} guard={!!renaming}>
+      <ul className="version-list">
+        {scores.map(score => {
+          const marks = counts.get(score.id) ?? 0,
+            linked = segments.filter(s => s.scoreId === score.id).length;
+          return (
+            <li key={score.id} className={score.id === activeId ? 'current' : ''}>
+              {renaming?.id === score.id ? (
+                <form
+                  className="version-rename"
+                  onSubmit={async e => {
+                    e.preventDefault();
+                    const title = renaming.title.trim();
+                    if (!title) return;
+                    try {
+                      await db.scores.update(score.id, { title });
+                      setRenaming(null);
+                    } catch (err) {
+                      notify(`Não foi possível renomear. ${errorText(err)}`, 'error');
+                    }
+                  }}
+                >
+                  <input
+                    aria-label="Nome da versão"
+                    value={renaming.title}
+                    maxLength={160}
+                    autoFocus
+                    onChange={e => setRenaming({ id: score.id, title: e.target.value })}
+                  />
+                  <button className="btn small" disabled={!renaming.title.trim()}>
+                    Salvar
+                  </button>
+                  <button type="button" className="btn small secondary" onClick={() => setRenaming(null)}>
+                    Cancelar
+                  </button>
+                </form>
+              ) : (
+                <>
+                  <div className="version-info">
+                    <strong>{score.title}</strong>
+                    <small>
+                      {score.id === activeId && 'Aberta agora · '}
+                      Importada em {formatDate(score.createdAt)} · {plural(marks, 'marcação', 'marcações')} ·{' '}
+                      {plural(linked, 'trecho', 'trechos')}
+                    </small>
+                  </div>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    aria-label={`Renomear ${score.title}`}
+                    onClick={() => setRenaming({ id: score.id, title: score.title })}
+                  >
+                    <Pencil size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-btn subtle"
+                    aria-label={`Excluir ${score.title}`}
+                    onClick={() => void remove(score)}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </Modal>
+  );
+}
+
 export default function PieceDetail({
   id,
   onBack,
@@ -158,55 +387,125 @@ export default function PieceDetail({
   id: string;
   onBack: () => void;
   onPractice: (segmentId: string) => void;
-  notify: (s: string) => void;
+  notify: Notify;
 }) {
+  const confirm = useConfirm();
   const piece = useLiveQuery(() => db.pieces.get(id), [id]);
-  const scores = useLiveQuery(() => db.scores.where('pieceId').equals(id).toArray(), [id]) ?? [];
+  const scores = useLiveQuery(() => db.scores.where('pieceId').equals(id).sortBy('createdAt'), [id]) ?? [];
   const segments = useLiveQuery(() => db.segments.where('pieceId').equals(id).toArray(), [id]) ?? [];
   const notes = useLiveQuery(() => db.notes.where('pieceId').equals(id).toArray(), [id]) ?? [];
   const tasks = useLiveQuery(() => db.tasks.where('pieceId').equals(id).toArray(), [id]) ?? [];
-  const [scoreId, setScoreId] = useState(''),
+  const stats =
+    useLiveQuery(async () => {
+      const ids = (await db.segments.where('pieceId').equals(id).primaryKeys()) as string[];
+      return segmentStats(ids.length ? await db.sessions.where('segmentId').anyOf(ids).toArray() : []);
+    }, [id]) ?? new Map<string, SegmentStats>();
+  const [scoreId, setScoreId] = useState(() => loadLastScore(id)),
     [tab, setTab] = useState('segments'),
     [edit, setEdit] = useState(false),
-    [segmentForm, setSegmentForm] = useState<{ region?: Region; segment?: Segment } | null>(null);
+    [versions, setVersions] = useState(false),
+    [segmentForm, setSegmentForm] = useState<{ region?: Region; segment?: Segment } | null>(null),
+    [sheet, setSheet] = useState<string | null>(null),
+    [marking, setMarking] = useState<Segment | null>(null),
+    [regionRequest, setRegionRequest] = useState(0);
   const [target, setTarget] = useState<Region>(),
     [note, setNote] = useState(''),
     [source, setSource] = useState<'mine' | 'teacher'>('teacher'),
-    [task, setTask] = useState('');
+    [task, setTask] = useState(''),
+    [taskSegment, setTaskSegment] = useState('');
   const active = scores.find(s => s.id === scoreId) ?? scores[0];
+  const sheetSegment = segments.find(s => s.id === sheet);
+  useEffect(() => {
+    if (active) saveLastScore(id, active.id);
+  }, [id, active]);
   if (!piece) return <Empty title="Carregando peça" text="Preparando seu espaço de estudo." />;
+
+  const importScore = async (file: File) => {
+    try {
+      if (!scoreTypes.includes(file.type)) throw new Error('Use uma partitura em PDF, PNG, JPG ou WebP.');
+      let next = '';
+      await db.transaction('rw', [db.assets, db.scores], async () => {
+        const asset = await storeAsset(file);
+        next = uid();
+        await db.scores.add({
+          id: next,
+          pieceId: id,
+          assetId: asset.id,
+          title: file.name.replace(/\.[^.]+$/, ''),
+          createdAt: now(),
+        });
+      });
+      setScoreId(next);
+      setTarget(undefined);
+      notify('Partitura salva neste dispositivo.');
+    } catch (err) {
+      notify(`A partitura não foi importada. ${errorText(err)}`, 'error');
+    }
+  };
+  const view = (segment: Segment) => {
+    if (!segment.regions.length) return;
+    setScoreId(segment.scoreId);
+    setTarget({ ...segment.regions[0] });
+  };
+  const markOnScore = (segment: Segment) => {
+    setMarking(segment);
+    setRegionRequest(n => n + 1);
+  };
+  const removeSegment = async (segment: Segment) => {
+    const ok = await confirm({
+      title: 'Excluir trecho?',
+      message: `Excluir o trecho “${segment.title}”? A partitura e o histórico de prática serão preservados.`,
+      confirmLabel: 'Excluir trecho',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await db.transaction('rw', [db.segments, db.presets, db.tasks], async () => {
+        await db.segments.delete(segment.id);
+        await db.presets.where('segmentId').equals(segment.id).delete();
+        await db.tasks.where('segmentId').equals(segment.id).modify({ segmentId: undefined });
+      });
+      notify('Trecho excluído.');
+    } catch (err) {
+      notify(`Não foi possível excluir o trecho. ${errorText(err)}`, 'error');
+    }
+  };
+
   return (
-    <>
-      <button className="back-link" onClick={onBack}>
-        <ArrowLeft size={17} />
-        Repertório
-      </button>
-      <div className="page-heading compact">
-        <div>
-          <Badge variant={piece.status}>{statuses[piece.status]}</Badge>
+    <div className="piece-detail">
+      <header className="piece-header">
+        <button className="back-link" onClick={onBack}>
+          <ArrowLeft size={17} />
+          Repertório
+        </button>
+        <div className="piece-header-main">
           <h1>{piece.title}</h1>
           <p>
-            {piece.composer || 'Seu repertório'}
-            {piece.tags && ` · ${piece.tags}`}
+            <Badge variant={piece.status}>{statuses[piece.status]}</Badge>
+            <span>
+              {piece.composer || 'Seu repertório'}
+              {piece.tags && ` · ${piece.tags}`}
+            </span>
           </p>
         </div>
-        <button className="btn secondary" onClick={() => setEdit(true)}>
+        <button className="btn secondary small" onClick={() => setEdit(true)}>
           <Pencil size={16} />
           Editar peça
         </button>
-      </div>
+      </header>
       <div className="study-layout">
         <section className="score-card">
-          <div className="section-heading">
-            <div>
-              <FileUp size={18} />
-              {scores.length > 0 ? (
+          <div className="section-heading score-card-heading">
+            <div className="score-version">
+              <FileMusic size={18} aria-hidden />
+              {scores.length > 1 ? (
                 <select
                   aria-label="Versão da partitura"
                   value={active?.id ?? ''}
                   onChange={e => {
                     setScoreId(e.target.value);
                     setTarget(undefined);
+                    setMarking(null);
                   }}
                 >
                   {scores.map(s => (
@@ -216,56 +515,57 @@ export default function PieceDetail({
                   ))}
                 </select>
               ) : (
-                <h2>Partitura</h2>
+                <h2>{active?.title ?? 'Partitura'}</h2>
+              )}
+              {active && (
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label="Versões da partitura: renomear ou excluir"
+                  onClick={() => setVersions(true)}
+                >
+                  <Layers size={17} />
+                </button>
               )}
             </div>
-            <label className="btn small secondary file-button">
-              <Plus size={16} />
-              Importar
-              <input
-                type="file"
-                accept="application/pdf,image/png,image/jpeg,image/webp"
-                onChange={async e => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  try {
-                    if (!['application/pdf', 'image/png', 'image/jpeg', 'image/webp'].includes(file.type))
-                      throw new Error('Use PDF ou imagem.');
-                    let next = '';
-                    await db.transaction('rw', [db.assets, db.scores], async () => {
-                      const asset = await storeAsset(file);
-                      next = uid();
-                      await db.scores.add({
-                        id: next,
-                        pieceId: id,
-                        assetId: asset.id,
-                        title: file.name,
-                        createdAt: now(),
-                      });
-                    });
-                    setScoreId(next);
-                    setTarget(undefined);
-                    notify('Partitura salva neste dispositivo.');
-                  } catch (err) {
-                    notify(errorText(err));
-                  }
-                  e.target.value = '';
-                }}
-              />
-            </label>
+            <ImportScoreButton onFile={importScore} />
           </div>
+          {marking && active && (
+            <div className="marking-banner" role="status">
+              <SquareDashed size={17} aria-hidden />
+              <span>
+                Desenhe na partitura o retângulo de <strong>{marking.title}</strong>.
+              </span>
+              <button type="button" className="link-btn" onClick={() => setMarking(null)}>
+                Cancelar
+              </button>
+            </div>
+          )}
           {active ? (
             <ScoreViewer
               key={active.id}
               score={active}
               notify={notify}
               targetRegion={target}
-              onRegion={region => setSegmentForm({ region })}
+              segments={segments.filter(s => s.scoreId === active.id)}
+              onSegmentClick={setSheet}
+              requestRegion={regionRequest}
+              onRegion={async region => {
+                if (!marking) return setSegmentForm({ region });
+                try {
+                  await db.segments.update(marking.id, { scoreId: active.id, regions: [region] });
+                  notify(`“${marking.title}” marcado na partitura.`);
+                  setMarking(null);
+                } catch (err) {
+                  notify(`Não foi possível marcar o trecho. ${errorText(err)}`, 'error');
+                }
+              }}
             />
           ) : (
             <Empty
               title="Traga sua partitura"
               text="Importe um PDF ou uma imagem. Você poderá escrever sobre ela e marcar os trechos que quer praticar."
+              action={<ImportScoreButton big onFile={importScore} />}
             />
           )}
         </section>
@@ -291,7 +591,7 @@ export default function PieceDetail({
               </div>
               {segments.length ? (
                 segments.map(s => (
-                  <article className="segment-card" key={s.id}>
+                  <article className={`segment-card ${s.rating ? `rated-${s.rating}` : ''}`} key={s.id}>
                     <div className="row between">
                       <Badge>{s.difficulty}</Badge>
                       <button
@@ -310,53 +610,39 @@ export default function PieceDetail({
                     {s.goal && <p className="segment-goal">{s.goal}</p>}
                     <div className="segment-meta">
                       <strong>
-                        {s.bpm} <small>BPM</small>
+                        {s.bpm} <small>BPM inicial</small>
                       </strong>
                       {s.reviewDate && (
                         <span className={s.reviewDate <= localDay() ? 'due' : ''}>
                           <CalendarDays size={14} />
+                          {s.reviewDate <= localDay() ? 'Revisar: ' : 'Revisão em '}
                           {s.reviewDate.split('-').reverse().join('/')}
                         </span>
                       )}
                     </div>
-                    <div className="row">
+                    <SegmentHistory stats={stats.get(s.id)} />
+                    <div className="row wrap">
                       <button className="btn small" onClick={() => onPractice(s.id)}>
                         <Play size={15} />
                         Praticar
                       </button>
-                      {s.regions.length > 0 && (
-                        <button
-                          className="btn small secondary"
-                          onClick={() => {
-                            setScoreId(s.scoreId);
-                            setTarget({ ...s.regions[0] });
-                          }}
-                        >
+                      {s.regions.length > 0 ? (
+                        <button className="btn small secondary" onClick={() => view(s)}>
                           <Focus size={15} />
                           Ver
                         </button>
+                      ) : (
+                        active && (
+                          <button className="btn small secondary" onClick={() => markOnScore(s)}>
+                            <SquareDashed size={15} />
+                            Marcar na partitura
+                          </button>
+                        )
                       )}
                       <button
-                        className="icon-btn subtle"
+                        className="icon-btn subtle segment-delete"
                         aria-label={`Excluir trecho ${s.title}`}
-                        onClick={async () => {
-                          if (
-                            !window.confirm(
-                              `Excluir o trecho “${s.title}”? A partitura e o histórico serão preservados.`,
-                            )
-                          )
-                            return;
-                          try {
-                            await db.transaction('rw', [db.segments, db.presets, db.tasks], async () => {
-                              await db.segments.delete(s.id);
-                              await db.presets.where('segmentId').equals(s.id).delete();
-                              await db.tasks.where('segmentId').equals(s.id).modify({ segmentId: undefined });
-                            });
-                            notify('Trecho excluído.');
-                          } catch (err) {
-                            notify(errorText(err));
-                          }
-                        }}
+                        onClick={() => void removeSegment(s)}
                       >
                         <Trash2 size={15} />
                       </button>
@@ -366,7 +652,7 @@ export default function PieceDetail({
               ) : (
                 <Empty
                   title="Onde concentrar o estudo?"
-                  text="Marque uma região na partitura ou adicione um trecho pelo botão +."
+                  text="Marque uma região na partitura com a ferramenta Trecho ou adicione um trecho pelo botão +."
                 />
               )}
             </>
@@ -389,7 +675,7 @@ export default function PieceDetail({
                     });
                     setNote('');
                   } catch (err) {
-                    notify(errorText(err));
+                    notify(`A nota não foi salva. ${errorText(err)}`, 'error');
                   }
                 }}
               >
@@ -429,11 +715,17 @@ export default function PieceDetail({
                       className="icon-btn subtle"
                       aria-label="Excluir observação"
                       onClick={async () => {
-                        if (window.confirm('Excluir esta observação?'))
+                        const ok = await confirm({
+                          title: 'Excluir observação?',
+                          message: 'Esta observação será excluída deste dispositivo.',
+                          confirmLabel: 'Excluir',
+                          danger: true,
+                        });
+                        if (ok)
                           try {
                             await db.notes.delete(n.id);
                           } catch (err) {
-                            notify(errorText(err));
+                            notify(`Não foi possível excluir a observação. ${errorText(err)}`, 'error');
                           }
                       }}
                     >
@@ -447,7 +739,7 @@ export default function PieceDetail({
             <>
               <h2 className="aside-title">Próximos passos</h2>
               <form
-                className="inline-form"
+                className="task-form"
                 onSubmit={async e => {
                   e.preventDefault();
                   if (!task.trim()) return;
@@ -455,6 +747,7 @@ export default function PieceDetail({
                     await db.tasks.add({
                       id: uid(),
                       pieceId: id,
+                      segmentId: taskSegment || undefined,
                       title: task.trim(),
                       done: false,
                       dueDate: '',
@@ -462,53 +755,91 @@ export default function PieceDetail({
                     });
                     setTask('');
                   } catch (err) {
-                    notify(errorText(err));
+                    notify(`A tarefa não foi salva. ${errorText(err)}`, 'error');
                   }
                 }}
               >
-                <input
-                  aria-label="Nova tarefa"
-                  value={task}
-                  maxLength={300}
-                  onChange={e => setTask(e.target.value)}
-                  placeholder="O que praticar?"
-                />
-                <button className="icon-btn selected" disabled={!task.trim()} aria-label="Adicionar tarefa">
-                  <Plus size={19} />
-                </button>
-              </form>
-              {tasks.map(t => (
-                <div className="task-row" key={t.id}>
-                  <button
-                    className={`check-button ${t.done ? 'checked' : ''}`}
-                    aria-label={`${t.done ? 'Reabrir' : 'Concluir'} ${t.title}`}
-                    onClick={async () => {
-                      try {
-                        await db.tasks.update(t.id, { done: !t.done });
-                      } catch (err) {
-                        notify(errorText(err));
-                      }
-                    }}
-                  >
-                    {t.done && <Check size={14} />}
-                  </button>
-                  <span className={t.done ? 'done' : ''}>{t.title}</span>
-                  <button
-                    className="icon-btn subtle"
-                    aria-label="Excluir tarefa"
-                    onClick={async () => {
-                      if (window.confirm('Excluir esta tarefa?'))
-                        try {
-                          await db.tasks.delete(t.id);
-                        } catch (err) {
-                          notify(errorText(err));
-                        }
-                    }}
-                  >
-                    <Trash2 size={14} />
+                <div className="inline-form">
+                  <input
+                    aria-label="Nova tarefa"
+                    value={task}
+                    maxLength={300}
+                    onChange={e => setTask(e.target.value)}
+                    placeholder="O que praticar?"
+                  />
+                  <button className="icon-btn selected" disabled={!task.trim()} aria-label="Adicionar tarefa">
+                    <Plus size={19} />
                   </button>
                 </div>
-              ))}
+                {segments.length > 0 && (
+                  <select
+                    aria-label="Trecho da tarefa (opcional)"
+                    value={taskSegment}
+                    onChange={e => setTaskSegment(e.target.value)}
+                  >
+                    <option value="">Sem trecho específico</option>
+                    {segments.map(s => (
+                      <option key={s.id} value={s.id}>
+                        Trecho: {s.title}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </form>
+              {tasks.map(t => {
+                const linked = segments.find(s => s.id === t.segmentId);
+                return (
+                  <div className="task-row" key={t.id}>
+                    <button
+                      className={`check-button ${t.done ? 'checked' : ''}`}
+                      aria-label={`${t.done ? 'Reabrir' : 'Concluir'} ${t.title}`}
+                      onClick={async () => {
+                        try {
+                          await db.tasks.update(t.id, { done: !t.done });
+                        } catch (err) {
+                          notify(`Não foi possível atualizar a tarefa. ${errorText(err)}`, 'error');
+                        }
+                      }}
+                    >
+                      {t.done && <Check size={14} />}
+                    </button>
+                    <div>
+                      <span className={t.done ? 'done' : ''}>{t.title}</span>
+                      {linked && <small>Trecho: {linked.title}</small>}
+                    </div>
+                    {linked && !t.done && (
+                      <button
+                        className="btn small"
+                        aria-label={`Praticar ${linked.title}`}
+                        onClick={() => onPractice(linked.id)}
+                      >
+                        <Play size={14} />
+                        Praticar
+                      </button>
+                    )}
+                    <button
+                      className="icon-btn subtle"
+                      aria-label={`Excluir tarefa ${t.title}`}
+                      onClick={async () => {
+                        const ok = await confirm({
+                          title: 'Excluir tarefa?',
+                          message: `Excluir “${t.title}”?`,
+                          confirmLabel: 'Excluir',
+                          danger: true,
+                        });
+                        if (ok)
+                          try {
+                            await db.tasks.delete(t.id);
+                          } catch (err) {
+                            notify(`Não foi possível excluir a tarefa. ${errorText(err)}`, 'error');
+                          }
+                      }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                );
+              })}
             </>
           )}
         </aside>
@@ -516,16 +847,70 @@ export default function PieceDetail({
       {edit && (
         <PieceForm piece={piece} onClose={() => setEdit(false)} onSaved={() => notify('Peça atualizada.')} />
       )}
+      {versions && (
+        <ScoreVersions
+          scores={scores}
+          segments={segments}
+          activeId={active?.id}
+          notify={notify}
+          onClose={() => setVersions(false)}
+          onDeleted={deleted => {
+            if (deleted === active?.id) {
+              setScoreId('');
+              setTarget(undefined);
+            }
+            if (scores.length <= 1) setVersions(false);
+          }}
+        />
+      )}
+      {sheetSegment && (
+        <Modal title={sheetSegment.title} onClose={() => setSheet(null)}>
+          <div className="segment-sheet">
+            <p className="segment-sheet-meta">
+              {sheetSegment.measures ? `Compassos ${sheetSegment.measures} · ` : ''}
+              {hands[sheetSegment.hand]} · {sheetSegment.bpm} BPM inicial
+            </p>
+            {sheetSegment.goal && <p className="segment-goal">{sheetSegment.goal}</p>}
+            <SegmentHistory stats={stats.get(sheetSegment.id)} />
+            <div className="segment-sheet-actions">
+              <button className="btn" data-autofocus onClick={() => onPractice(sheetSegment.id)}>
+                <Play size={17} />
+                Praticar
+              </button>
+              <button
+                className="btn secondary"
+                onClick={() => {
+                  view(sheetSegment);
+                  setSheet(null);
+                }}
+              >
+                <Focus size={17} />
+                Ver
+              </button>
+              <button
+                className="btn secondary"
+                onClick={() => {
+                  setSegmentForm({ segment: sheetSegment });
+                  setSheet(null);
+                }}
+              >
+                <Pencil size={17} />
+                Editar
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {segmentForm && (
         <SegmentForm
           pieceId={id}
-          scoreId={segmentForm.segment?.scoreId ?? active?.id ?? ''}
+          scoreId={segmentForm.segment?.scoreId || active?.id || ''}
           region={segmentForm.region}
           segment={segmentForm.segment}
           onClose={() => setSegmentForm(null)}
           onSaved={() => notify('Trecho salvo. Você já pode praticar.')}
         />
       )}
-    </>
+    </div>
   );
 }

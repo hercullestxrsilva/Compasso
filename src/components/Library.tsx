@@ -3,7 +3,13 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Plus, Search, ArrowUpRight, MoreHorizontal, BookOpen, FileMusic, Trash2 } from 'lucide-react';
 import { db, removePiece, storeAsset } from '../db';
 import { statuses, uid, now, type Piece, type PieceStatus } from '../domain';
-import { Modal, Field, Empty, ErrorBox, Badge, errorText } from './common';
+import { Modal, Field, Empty, ErrorBox, Badge, errorText, useConfirm, type Notify } from './common';
+import { forgetHistory } from '../annotation-history';
+import { forgetPieceView } from '../score-view';
+
+function scoreCount(count: number) {
+  return count === 0 ? 'Sem partitura' : count === 1 ? '1 partitura' : `${count} partituras`;
+}
 
 export function PieceForm({
   piece,
@@ -22,7 +28,7 @@ export function PieceForm({
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false);
   return (
-    <Modal title={piece ? 'Editar peça' : 'Adicionar ao repertório'} onClose={onClose}>
+    <Modal guard title={piece ? 'Editar peça' : 'Adicionar ao repertório'} onClose={onClose}>
       <form
         onSubmit={async e => {
           e.preventDefault();
@@ -70,6 +76,7 @@ export function PieceForm({
             onChange={e => setTitle(e.target.value)}
             placeholder="Ex.: Prelúdio em Dó maior"
             autoFocus
+            data-autofocus
           />
         </Field>
         <Field label="Compositor">
@@ -125,19 +132,31 @@ export function PieceForm({
     </Modal>
   );
 }
-export function Library({
-  onOpen,
-  notify,
-}: {
-  onOpen: (id: string) => void;
-  notify: (text: string) => void;
-}) {
+export function Library({ onOpen, notify }: { onOpen: (id: string) => void; notify: Notify }) {
+  const confirm = useConfirm();
   const pieces = useLiveQuery(() => db.pieces.orderBy('updatedAt').reverse().toArray()) ?? [];
   const scores = useLiveQuery(() => db.scores.toArray()) ?? [];
   const [search, setSearch] = useState(''),
     [filter, setFilter] = useState('all'),
-    [form, setForm] = useState<Piece | 'new' | null>(null),
-    [deleting, setDeleting] = useState<Piece>();
+    [form, setForm] = useState<Piece | 'new' | null>(null);
+  const remove = async (piece: Piece) => {
+    const ok = await confirm({
+      title: 'Excluir peça?',
+      message: `Excluir “${piece.title}”, suas partituras, marcações e tarefas? O histórico de prática e as aulas serão preservados. Esta ação não pode ser desfeita.`,
+      confirmLabel: 'Excluir peça',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      const scoreIds = scores.filter(s => s.pieceId === piece.id).map(s => s.id);
+      await removePiece(piece.id);
+      scoreIds.forEach(forgetHistory);
+      forgetPieceView(piece.id, scoreIds);
+      notify('Peça excluída.');
+    } catch (e) {
+      notify(`Não foi possível excluir a peça. ${errorText(e)}`, 'error');
+    }
+  };
   const filtered = pieces.filter(
     p =>
       (filter === 'all' || p.status === filter) &&
@@ -200,7 +219,7 @@ export function Library({
                 <div className="piece-footer">
                   <span>
                     <FileMusic size={15} />
-                    {scores.filter(s => s.pieceId === piece.id).length} arquivo(s)
+                    {scoreCount(scores.filter(s => s.pieceId === piece.id).length)}
                   </span>
                   <div>
                     <button
@@ -213,7 +232,7 @@ export function Library({
                     <button
                       className="icon-btn subtle"
                       aria-label={`Excluir ${piece.title}`}
-                      onClick={() => setDeleting(piece)}
+                      onClick={() => void remove(piece)}
                     >
                       <Trash2 size={16} />
                     </button>
@@ -245,35 +264,12 @@ export function Library({
         <PieceForm
           piece={form === 'new' ? undefined : form}
           onClose={() => setForm(null)}
-          onSaved={() => notify('Peça salva neste dispositivo.')}
+          onSaved={id => {
+            notify('Peça salva neste dispositivo.');
+            // A new piece opens right away so its score and trechos can be set up.
+            if (form === 'new') onOpen(id);
+          }}
         />
-      )}
-      {deleting && (
-        <Modal title="Excluir peça?" onClose={() => setDeleting(undefined)}>
-          <p>
-            Excluir “{deleting.title}”, suas partituras, marcações e tarefas? O histórico de prática e as
-            aulas serão preservados. Esta ação não pode ser desfeita.
-          </p>
-          <footer className="modal-actions">
-            <button className="btn secondary" onClick={() => setDeleting(undefined)}>
-              Cancelar
-            </button>
-            <button
-              className="btn danger"
-              onClick={async () => {
-                try {
-                  await removePiece(deleting.id);
-                  setDeleting(undefined);
-                  notify('Peça excluída.');
-                } catch (e) {
-                  notify(errorText(e));
-                }
-              }}
-            >
-              Excluir peça
-            </button>
-          </footer>
-        </Modal>
       )}
     </>
   );
