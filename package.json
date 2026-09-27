@@ -12,7 +12,10 @@
     "test": "vitest run",
     "server": "node --env-file-if-exists=.env server/index.mjs",
     "check": "tsc -b",
-    "start": "node --env-file-if-exists=.env server/production.mjs"
+    "start": "node --env-file-if-exists=.env server/production.mjs",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@fastify/multipart": "^9.2.1",
@@ -24,21 +27,28 @@
     "dexie": "^4.0.11",
     "dexie-react-hooks": "^1.1.7",
     "fastify": "^5.6.0",
+    "fflate": "^0.8.3",
     "lucide-react": "^0.468.0",
-    "pdfjs-dist": "^5.4.624",
+    "pdfjs-dist": "^6.3.289",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "zod": "^4.1.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.55.0",
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "eslint": "^10.11.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "fake-indexeddb": "^6.2.2",
+    "globals": "^17.12.0",
     "pdf-lib": "^1.17.1",
+    "prettier": "^3.9.9",
     "typescript": "~5.9.2",
+    "typescript-eslint": "^8.70.1",
     "vite": "^7.1.0",
     "vitest": "^3.2.4"
   }
