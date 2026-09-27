@@ -131,7 +131,14 @@ describe('daily plan', () => {
     expect(plan.minutes).toBeLessThanOrEqual(15);
     expect(plan.items.map(i => i.minutes)).toEqual([5, 5, 5]);
     expect(plan.leftover).toBe(5);
-    expect(plan.leftoverReviews).toBe(5);
+    expect(plan.leftoverReviews.map(r => [r.segment.id, r.daysOverdue])).toEqual([
+      ['r3', 13],
+      ['r4', 12],
+      ['r5', 11],
+      ['r6', 10],
+      ['r7', 9],
+    ]);
+    expect(plan.leftoverReviews[0].pieceTitle).toBe('Peça p1');
   });
 
   it('spreads spare time over few items without exceeding ten minutes each', () => {
@@ -156,7 +163,49 @@ describe('daily plan', () => {
       today,
       budget: 30,
     });
-    expect(plan.items).toEqual([]);
+    // 't' only comes back as a piece in study to resume, not for its finished task.
+    expect(plan.items.map(i => [i.segment.id, i.reasons])).toEqual([['t', [{ kind: 'resume' }]]]);
+  });
+
+  it('brings back pieces in study after a break, the most recently practised first', () => {
+    const plan = buildDailyPlan({
+      segments: [
+        segment('a1', { pieceId: 'a', createdAt: '2026-01-02' }),
+        segment('a0', { pieceId: 'a', createdAt: '2026-01-01' }),
+        segment('b1', { pieceId: 'b' }),
+        segment('c1', { pieceId: 'c', rating: 'comfortable' }),
+        segment('d1', { pieceId: 'd' }),
+        segment('e1', { pieceId: 'e' }),
+      ],
+      sessions: [
+        session('a1', '2026-09-01T10:00:00', { pieceId: 'a' }),
+        session('b1', '2026-09-10T10:00:00', { pieceId: 'b' }),
+      ],
+      tasks: [],
+      pieces: [piece('a'), piece('b'), piece('c'), piece('d'), piece('e'), piece('f', 'planned')],
+      today,
+      budget: 60,
+    });
+    // b was practised last; in a, the never-practised a0 comes before a1; c has only comfortable trechos.
+    expect(plan.items.map(i => i.segment.id)).toEqual(['b1', 'a0', 'd1']);
+    expect(plan.items.every(i => i.reasons[0].kind === 'resume')).toBe(true);
+  });
+
+  it('does not resume set-aside pieces when the plan already has enough', () => {
+    const plan = buildDailyPlan({
+      segments: [
+        segment('r1', { reviewDate: today }),
+        segment('r2', { reviewDate: today }),
+        segment('r3', { reviewDate: today }),
+        segment('x', { pieceId: 'x' }),
+      ],
+      sessions: [],
+      tasks: [],
+      pieces: [piece('p1'), piece('x')],
+      today,
+      budget: 60,
+    });
+    expect(plan.items.map(i => i.segment.id)).toEqual(['r1', 'r2', 'r3']);
   });
 
   it('picks the least recently practised open trecho of a recent piece', () => {
@@ -180,6 +229,8 @@ describe('daily plan', () => {
     expect(reasonText({ kind: 'overdue', days: 1 })).toBe('revisão atrasada 1 dia');
     expect(reasonText({ kind: 'overdue', days: 3 })).toBe('revisão atrasada 3 dias');
     expect(reasonText({ kind: 'task', title: 'Dedilhado' })).toBe('tarefa: Dedilhado');
+    expect(reasonText({ kind: 'recent' })).toBe('peça praticada nesta semana');
+    expect(reasonText({ kind: 'resume' })).toBe('retomar a peça');
   });
 
   it('converts the plan into routine steps', () => {

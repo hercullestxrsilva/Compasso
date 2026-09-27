@@ -82,6 +82,10 @@ export default function Dashboard({
   const pending = tasks.filter(t => !t.done),
     reviews = dueReviews(segments, today);
   const plan = buildDailyPlan({ segments, sessions, tasks, pieces, today, budget });
+  const routineItems = planToRoutine(plan.items);
+  // Saving the same plan twice would only duplicate the routine; the button re-enables when the plan changes.
+  const planKey = `${today}:${JSON.stringify(routineItems)}`;
+  const [savedPlan, setSavedPlan] = useState('');
   const focus = pickFocus(segments, sessions, pieces, today);
   const next = focus?.segment;
   const lastBpm = focus?.session ? reachedBpm(focus.session) : null;
@@ -95,8 +99,9 @@ export default function Dashboard({
       await db.routines.add({
         id: uid(),
         title: `Plano de ${formatDate(today)} · ${plan.minutes} min`,
-        items: planToRoutine(plan.items),
+        items: routineItems,
       });
+      setSavedPlan(planKey);
       notify('Plano salvo. Ele aparece em Praticar › Rotinas de estudo.');
     } catch (e) {
       notify(errorText(e), 'error');
@@ -289,11 +294,54 @@ export default function Dashboard({
                       ? ` · ${plural(plan.leftover, 'trecho fica', 'trechos ficam')} para outro momento`
                       : ''}
                   </span>
-                  <button className="link-btn" onClick={() => void saveRoutine()}>
-                    <ListPlus size={15} />
-                    Salvar como rotina
-                  </button>
+                  {savedPlan === planKey ? (
+                    <span className="plan-saved" role="status">
+                      <Check size={15} />
+                      Salvo em Rotinas de estudo
+                    </span>
+                  ) : (
+                    <button className="link-btn" onClick={() => void saveRoutine()}>
+                      <ListPlus size={15} />
+                      Salvar como rotina
+                    </button>
+                  )}
                 </div>
+                {plan.leftoverReviews.length > 0 && (
+                  <details className="plan-later">
+                    <summary>
+                      {plan.leftoverReviews.length === 1
+                        ? 'Ver a revisão que não coube no tempo de hoje'
+                        : `Ver as ${plan.leftoverReviews.length} revisões que não couberam no tempo de hoje`}
+                    </summary>
+                    <ul>
+                      {plan.leftoverReviews.map(({ segment, pieceTitle, daysOverdue }) => (
+                        <li key={segment.id}>
+                          <div className="grow">
+                            <strong>{segment.title}</strong>
+                            <small>
+                              {[
+                                pieceTitle,
+                                reasonText(
+                                  daysOverdue ? { kind: 'overdue', days: daysOverdue } : { kind: 'due' },
+                                ),
+                              ]
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </small>
+                          </div>
+                          <button
+                            className="btn small secondary"
+                            aria-label={`Praticar ${segment.title}`}
+                            onClick={() => onPractice(segment.id)}
+                          >
+                            <Play size={14} />
+                            Praticar
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
               </>
             ) : (
               <p className="subtle-text">

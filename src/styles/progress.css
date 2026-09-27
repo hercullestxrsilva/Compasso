@@ -150,6 +150,55 @@
   color: var(--muted);
 }
 
+.plan-saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 0;
+  color: var(--green);
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+.plan-later {
+  margin-top: 12px;
+  border-top: 1px solid #edf1f2;
+  padding-top: 10px;
+}
+.plan-later summary {
+  cursor: pointer;
+  width: fit-content;
+  color: var(--green);
+  font-weight: 600;
+  font-size: 0.78rem;
+  padding: 4px 0;
+}
+.plan-later ul {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+.plan-later li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #edf1f2;
+}
+.plan-later li:last-child {
+  border-bottom: 0;
+}
+.plan-later strong {
+  display: block;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+.plan-later small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.73rem;
+  margin-top: 2px;
+}
+
 /* Hoje: weekly goal on the week chart */
 .week-goal {
   margin-top: -4px;
@@ -210,7 +259,11 @@
   left: 0;
   right: 0;
   height: 0;
-  border-top: 2px solid var(--gold);
+  /* A darker gold with a paper halo: var(--gold) alone fades into the track and the bars. */
+  border-top: 2px solid #94640f;
+  box-shadow:
+    0 -1px 0 var(--paper),
+    0 1px 0 var(--paper);
   pointer-events: none;
 }
 .week-bars > div > strong {
@@ -581,6 +634,8 @@
   .review-scope > button,
   .plan-item .btn.small,
   .plan-footer .link-btn,
+  .plan-later summary,
+  .plan-later .btn.small,
   .stat > .stat-link,
   .week-goal .link-btn,
   .tempo-panel .link-btn,
@@ -590,7 +645,8 @@
   .chart-table summary {
     min-height: 44px;
   }
-  .chart-table summary {
+  .chart-table summary,
+  .plan-later summary {
     display: flex;
     align-items: center;
   }

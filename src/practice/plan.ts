@@ -6,7 +6,8 @@ export type PlanReason =
   | { kind: 'due' }
   | { kind: 'difficult' }
   | { kind: 'task'; title: string }
-  | { kind: 'recent' };
+  | { kind: 'recent' }
+  | { kind: 'resume' };
 
 export interface PlanItem {
   segment: Segment;
@@ -21,8 +22,8 @@ export interface DailyPlan {
   minutes: number;
   /** Candidates left out because the budget ran out. */
   leftover: number;
-  /** Due or overdue reviews among the leftovers. */
-  leftoverReviews: number;
+  /** Due or overdue reviews among the leftovers, so they can still be reached from the plan. */
+  leftoverReviews: { segment: Segment; pieceTitle?: string; daysOverdue: number }[];
 }
 
 export interface PlanInput {
@@ -42,6 +43,7 @@ const baseMinutes: Record<PlanReason['kind'], number> = {
   difficult: 6,
   task: 5,
   recent: 4,
+  resume: 4,
 };
 /** Shortest step worth scheduling. */
 const MIN_ITEM = 3;
@@ -49,6 +51,8 @@ const MIN_ITEM = 3;
 const MAX_ITEM = 10;
 /** A piece practised in these many days counts as "recent". */
 const RECENT_DAYS = 7;
+/** Below this many candidates, pieces in study that were set aside are brought back (e.g. after a break). */
+const MIN_CANDIDATES = 3;
 
 export type ReviewStatus = 'overdue' | 'today' | 'soon' | 'later' | 'none';
 
@@ -103,29 +107,56 @@ export function buildDailyPlan({ segments, sessions, tasks, pieces, today, budge
     )
     .forEach(t => add(byId.get(t.segmentId!)!, { kind: 'task', title: t.title }));
 
-  // One step per recently practised piece: its least recently practised trecho that is not yet comfortable.
-  const since = addDays(today, -RECENT_DAYS);
-  const recentPieces = new Map<string, string>();
+  const lastByPiece = new Map<string, string>();
   for (const s of sessions)
-    if (s.pieceId && s.activeSeconds > 0 && dayOf(s.startedAt) >= since)
-      if ((recentPieces.get(s.pieceId) ?? '') < s.startedAt) recentPieces.set(s.pieceId, s.startedAt);
-  [...recentPieces.entries()]
+    if (s.pieceId && s.activeSeconds > 0 && (lastByPiece.get(s.pieceId) ?? '') < s.startedAt)
+      lastByPiece.set(s.pieceId, s.startedAt);
+  /** The least recently practised trecho of a piece that is not yet comfortable (never practised first). */
+  const openTrecho = (pieceId: string) =>
+    segments
+      .filter(s => s.pieceId === pieceId && s.rating !== 'comfortable' && !candidates.has(s.id))
+      .sort(
+        (a, b) =>
+          (last.get(a.id) ?? '').localeCompare(last.get(b.id) ?? '') ||
+          a.createdAt.localeCompare(b.createdAt),
+      )[0];
+
+  // One step per recently practised piece.
+  const since = addDays(today, -RECENT_DAYS);
+  const recentPieces = [...lastByPiece.entries()]
+    .filter(([, startedAt]) => dayOf(startedAt) >= since)
     .sort((a, b) => b[1].localeCompare(a[1]))
-    .forEach(([pieceId]) => {
-      const pick = segments
-        .filter(s => s.pieceId === pieceId && s.rating !== 'comfortable' && !candidates.has(s.id))
-        .sort((a, b) => (last.get(a.id) ?? '').localeCompare(last.get(b.id) ?? ''))[0];
-      if (pick) add(pick, { kind: 'recent' });
+    .map(([pieceId]) => pieceId);
+  for (const pieceId of recentPieces) {
+    const pick = openTrecho(pieceId);
+    if (pick) add(pick, { kind: 'recent' });
+  }
+
+  // After a break the passes above can leave the plan empty exactly when it helps most: bring back the pieces
+  // in study, the most recently practised first.
+  pieces
+    .filter(p => p.status === 'studying' && !recentPieces.includes(p.id))
+    .sort((a, b) => (lastByPiece.get(b.id) ?? '').localeCompare(lastByPiece.get(a.id) ?? ''))
+    .forEach(p => {
+      if (candidates.size >= MIN_CANDIDATES) return;
+      const pick = openTrecho(p.id);
+      if (pick) add(pick, { kind: 'resume' });
     });
 
   const items: PlanItem[] = [];
+  const leftoverReviews: DailyPlan['leftoverReviews'] = [];
   let remaining = Math.max(0, Math.floor(budget)),
-    leftover = 0,
-    leftoverReviews = 0;
+    leftover = 0;
   for (const { segment, reasons } of candidates.values()) {
     if (remaining < MIN_ITEM) {
       leftover++;
-      if (reasons.some(r => r.kind === 'overdue' || r.kind === 'due')) leftoverReviews++;
+      const review = reasons.find(r => r.kind === 'overdue' || r.kind === 'due');
+      if (review)
+        leftoverReviews.push({
+          segment,
+          pieceTitle: pieceById.get(segment.pieceId)?.title,
+          daysOverdue: review.kind === 'overdue' ? review.days : 0,
+        });
       continue;
     }
     const minutes = Math.min(remaining, Math.max(...reasons.map(r => baseMinutes[r.kind])));
@@ -161,7 +192,9 @@ export function reasonText(reason: PlanReason) {
     case 'task':
       return `tarefa: ${reason.title}`;
     case 'recent':
-      return 'peça em estudo';
+      return 'peça praticada nesta semana';
+    case 'resume':
+      return 'retomar a peça';
   }
 }
 
