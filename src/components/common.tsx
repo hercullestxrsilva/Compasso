@@ -1,10 +1,45 @@
-import { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import type { ReactNode } from 'react';
 import { X, Music2 } from 'lucide-react';
 
 export type NotifyTone = 'success' | 'error' | 'info';
 /** Shows a toast. Use tone 'error' for failures so they are not styled as a success. */
 export type Notify = (text: string, tone?: NotifyTone) => void;
+
+/**
+ * Open modals, the top one last. Everything outside a modal dialog is inert (hidden from screen readers, not
+ * clickable), so the app shell shows its notices inside the top one.
+ */
+const openModals: HTMLDialogElement[] = [];
+const modalListeners = new Set<() => void>();
+let topModal: HTMLDialogElement | null = null;
+function modalsChanged() {
+  topModal = openModals.at(-1) ?? null;
+  for (const listener of modalListeners) listener();
+}
+function subscribeModals(listener: () => void) {
+  modalListeners.add(listener);
+  return () => {
+    modalListeners.delete(listener);
+  };
+}
+/** The modal dialog on top, or null when none is open. */
+export function useTopModal() {
+  return useSyncExternalStore(
+    subscribeModals,
+    () => topModal,
+    () => null,
+  );
+}
 
 export function Modal({
   title,
@@ -26,6 +61,8 @@ export function Modal({
     const d = ref.current!;
     const previous = document.activeElement as HTMLElement | null;
     d.showModal();
+    openModals.push(d);
+    modalsChanged();
     // showModal focuses the first focusable element (the close button). React's autoFocus does not render an
     // attribute, so prefer an explicit data-autofocus target, then the first field of a form.
     d.querySelector<HTMLElement>(
@@ -33,6 +70,9 @@ export function Modal({
     )?.focus();
     return () => {
       d.close();
+      const at = openModals.indexOf(d);
+      if (at >= 0) openModals.splice(at, 1);
+      modalsChanged();
       if (previous?.isConnected) previous.focus();
     };
   }, []);

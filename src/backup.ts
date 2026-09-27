@@ -730,6 +730,14 @@ export function backupAgeDays(at: string | null, now = new Date()) {
 export const describeBackupAge = (days: number) =>
   days === 0 ? 'hoje' : days === 1 ? 'ontem' : `há ${days} dias`;
 export const BACKUP_STALE_DAYS = 7;
+/**
+ * Time for a new backup: there is data here and no backup yet, the last one is over a week old, or files were
+ * added after it (a score or a lesson recording lost with the browser cannot be recreated). Shared by the top
+ * bar and Preferências, so both say the same.
+ */
+export function isBackupStale(hasData: boolean, days: number | null, newFiles = 0) {
+  return hasData && (days === null || days > BACKUP_STALE_DAYS || newFiles > 0);
+}
 
 export function formatBytes(bytes: number) {
   const units = ['bytes', 'KB', 'MB', 'GB'];

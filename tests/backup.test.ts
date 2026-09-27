@@ -13,6 +13,7 @@ import {
   describeBackupAge,
   exportRoom,
   formatBytes,
+  isBackupStale,
   isQuotaError,
   lastBackupAt,
   lastBackupHow,
@@ -511,6 +512,15 @@ describe('backup helpers', () => {
     expect(backupAgeDays(new Date(2026, 8, 25, 23, 0).toISOString(), now)).toBe(1);
     expect(backupAgeDays('2026-09-18', now)).toBe(8);
     expect([0, 1, 12].map(describeBackupAge)).toEqual(['hoje', 'ontem', 'há 12 dias']);
+  });
+  it('asks for a new backup only when there is something to lose', () => {
+    expect(isBackupStale(false, null)).toBe(false);
+    expect(isBackupStale(false, 30, 4)).toBe(false);
+    expect(isBackupStale(true, null)).toBe(true);
+    expect(isBackupStale(true, 7)).toBe(false);
+    expect(isBackupStale(true, 8)).toBe(true);
+    expect(isBackupStale(true, 0, 1)).toBe(true);
+    expect(isBackupStale(true, 0, 0)).toBe(false);
   });
   it('remembers the last backup and survives blocked storage', () => {
     const store = new Map<string, string>();

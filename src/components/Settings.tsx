@@ -10,8 +10,12 @@ import {
   HardDrive,
   LogIn,
   LogOut,
+  Monitor,
+  Moon,
   ShieldCheck,
   Sparkles,
+  Sun,
+  SunMoon,
   Upload,
 } from 'lucide-react';
 import {
@@ -27,6 +31,7 @@ import {
   describeUnreadable,
   exportRoom,
   formatBytes,
+  isBackupStale,
   lastBackupAt,
   lastBackupHow,
   makeBackupZip,
@@ -40,6 +45,8 @@ import {
 import { db } from '../db';
 import { SaveCancelled, pickSaveTarget, saveBlob, type SaveResult, type SaveTarget } from '../saveFile';
 import { cloud } from '../services';
+import { getThemeChoice, setThemeChoice, type ThemeChoice } from '../theme';
+import CaptureRecovery from './CaptureRecovery';
 import { Field, errorText, useConfirm, type Notify } from './common';
 import '../styles/settings.css';
 interface CloudRow {
@@ -109,7 +116,14 @@ const skipOptions = (e: UnreadableAssetError) => {
   };
 };
 
-export default function Settings({ notify }: { notify: Notify }) {
+export default function Settings({
+  notify,
+  capturesAnchor = 'gravacoes-recuperaveis',
+}: {
+  notify: Notify;
+  /** Id of the interrupted-recordings section, so the app can link straight to it. */
+  capturesAnchor?: string;
+}) {
   const confirm = useConfirm();
   const [offlineReady, setOfflineReady] = useState(false);
   useEffect(() => {
@@ -422,7 +436,7 @@ export default function Settings({ notify }: { notify: Notify }) {
         since.files ? count(since.files, 'arquivo novo', 'arquivos novos') : '',
       ].filter(Boolean)
     : [];
-  const stale = hasData(library) && (days === null || days > BACKUP_STALE_DAYS || (since?.files ?? 0) > 0);
+  const stale = isBackupStale(hasData(library), days, since?.files);
   const cloudTooBig = libraryBytes !== undefined && libraryBytes > CLOUD_BACKUP_LIMIT;
   return (
     <>
@@ -432,6 +446,9 @@ export default function Settings({ notify }: { notify: Notify }) {
           <h1>Preferências e dados</h1>
           <p>Guarde uma cópia do que você está construindo.</p>
         </div>
+      </div>
+      <div id={capturesAnchor} className="settings-captures">
+        <CaptureRecovery notify={notify} />
       </div>
       <div className="settings-grid">
         <section className="panel">
@@ -694,6 +711,7 @@ export default function Settings({ notify }: { notify: Notify }) {
             servidor.
           </p>
         </section>
+        <ThemePanel />
         <section className="panel">
           <h2>Usar no iPad</h2>
           <div className="status-box">
@@ -726,6 +744,50 @@ export default function Settings({ notify }: { notify: Notify }) {
         </section>
       </div>
     </>
+  );
+}
+
+const themeOptions = [
+  ['system', 'Sistema', Monitor],
+  ['light', 'Claro', Sun],
+  ['dark', 'Escuro', Moon],
+] as const;
+
+/** Sistema / Claro / Escuro, saved in this browser (src/theme.ts). */
+function ThemePanel() {
+  const [theme, setTheme] = useState<ThemeChoice>(getThemeChoice);
+  useEffect(() => {
+    // Another tab may change it.
+    const sync = () => setTheme(getThemeChoice());
+    window.addEventListener('storage', sync);
+    return () => window.removeEventListener('storage', sync);
+  }, []);
+  return (
+    <section className="panel">
+      <SunMoon size={27} />
+      <h2>Aparência</h2>
+      <p>No modo Sistema, o aplicativo acompanha o tema claro ou escuro do iPad ou do computador.</p>
+      <fieldset className="theme-choice">
+        <legend className="sr-only">Tema do aplicativo</legend>
+        {themeOptions.map(([value, label, Icon]) => (
+          <label key={value} className={theme === value ? 'active' : ''}>
+            <input
+              type="radio"
+              name="compasso-theme"
+              value={value}
+              checked={theme === value}
+              onChange={() => {
+                setThemeChoice(value);
+                setTheme(value);
+              }}
+            />
+            <Icon size={17} aria-hidden="true" />
+            {label}
+          </label>
+        ))}
+      </fieldset>
+      <p className="hint">A escolha fica salva neste navegador.</p>
+    </section>
   );
 }
 

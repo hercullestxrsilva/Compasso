@@ -180,9 +180,14 @@ export function Library({ onOpen, notify }: { onOpen: (id: string) => void; noti
         </button>
       </div>
       <div className="toolbar">
-        <div className="tabs" aria-label="Estado das peças">
+        <div className="tabs" role="group" aria-label="Estado das peças">
           {[['all', 'Todas'], ...Object.entries(statuses)].map(([key, label]) => (
-            <button className={filter === key ? 'active' : ''} key={key} onClick={() => setFilter(key)}>
+            <button
+              className={filter === key ? 'active' : ''}
+              aria-pressed={filter === key}
+              key={key}
+              onClick={() => setFilter(key)}
+            >
               {label}
               <span>{pieces.filter(p => key === 'all' || p.status === key).length}</span>
             </button>
@@ -205,7 +210,10 @@ export function Library({ onOpen, notify }: { onOpen: (id: string) => void; noti
               <button
                 className={`piece-cover tone-${i % 4}`}
                 onClick={() => onOpen(piece.id)}
-                aria-label={`Abrir ${piece.title}`}
+                // A larger target for touch only: the title below is the card's one stop for keyboard and
+                // screen readers.
+                tabIndex={-1}
+                aria-hidden="true"
               >
                 <span className="cover-label">PARTITURA · {String(i + 1).padStart(2, '0')}</span>
                 <BookOpen size={36} strokeWidth={1} />

@@ -57,12 +57,15 @@ export default function Dashboard({
   onNavigate,
   onPiece,
   onPractice,
+  onLesson,
   onAdd,
   notify,
 }: {
   onNavigate: (s: string) => void;
   onPiece: (id: string) => void;
   onPractice: (id: string) => void;
+  /** Opens that lesson (the list when absent). */
+  onLesson?: (id: string) => void;
   onAdd: () => void;
   notify: Notify;
 }) {
@@ -365,7 +368,7 @@ export default function Dashboard({
                     <BookOpen size={25} strokeWidth={1} />
                   </div>
                   <div className="grow">
-                    <h3>{p.title}</h3>
+                    <strong className="repertoire-title">{p.title}</strong>
                     <p>{p.composer || 'Compositor não informado'}</p>
                   </div>
                   <Badge variant={p.status}>
@@ -431,7 +434,11 @@ export default function Dashboard({
             </div>
             {lessons.length ? (
               lessons.map(l => (
-                <button className="simple-row" key={l.id} onClick={() => onNavigate('lessons')}>
+                <button
+                  className="simple-row"
+                  key={l.id}
+                  onClick={() => (onLesson ? onLesson(l.id) : onNavigate('lessons'))}
+                >
                   <div>
                     <strong>{l.title}</strong>
                     <small>{formatDate(l.date)}</small>
