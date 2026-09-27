@@ -1,10 +1,10 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Download, RotateCcw, Trash2 } from 'lucide-react';
 import { db, storeAsset } from '../db';
 import { uid, formatDate, type Capture, type Lesson, type Piece, type Segment } from '../domain';
 import { download, errorText, useConfirm, type Notify } from './common';
-import { clearCapture, recoverCapture, useActiveCaptureIds } from './Recorder';
+import { CAPTURE_LOCK_PREFIX, clearCapture, recoverCapture, useActiveCaptureIds } from './Recorder';
 import '../styles/lessons.css';
 
 /** Makes `file` the lesson's audio and deletes the previous one. */
@@ -51,18 +51,57 @@ export function formatSize(bytes: number) {
     ? `${mb.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB`
     : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
-/** Where a capture goes by default: its origin when that still exists, else the given lesson. */
+/**
+ * Where a capture goes by default: its origin when that still exists. Without a known origin the student
+ * picks the place, so a piano take is never one tap away from becoming a lesson's audio.
+ */
 export function defaultDestination(
   capture: Capture,
   lessons: Pick<Lesson, 'id'>[],
   segments: Pick<Segment, 'id'>[],
-  fallbackLessonId = '',
 ) {
   if (capture.origin === 'lesson' && capture.lessonId && lessons.some(l => l.id === capture.lessonId))
     return `lesson:${capture.lessonId}`;
   if (capture.origin === 'attempt')
     return `attempt:${segments.some(s => s.id === capture.segmentId) ? capture.segmentId : ''}`;
-  return fallbackLessonId ? `lesson:${fallbackLessonId}` : '';
+  return '';
+}
+
+/**
+ * Captures still being recorded in another tab or window (each take holds a Web Lock), or null until
+ * that is known. Without Web Locks nothing can be known, and the Recorder stops a take whose row vanished.
+ */
+function useCapturesRecordingElsewhere(watch: boolean) {
+  const [held, setHeld] = useState<string[] | null>(null);
+  useEffect(() => {
+    if (!watch) return;
+    if (!navigator.locks?.query) {
+      setHeld([]);
+      return;
+    }
+    let current = true;
+    const check = async () => {
+      try {
+        const { held: locks = [] } = await navigator.locks.query();
+        const ids = locks
+          .map(lock => lock.name ?? '')
+          .filter(name => name.startsWith(CAPTURE_LOCK_PREFIX))
+          .map(name => name.slice(CAPTURE_LOCK_PREFIX.length))
+          .sort();
+        if (current) setHeld(previous => (previous?.join() === ids.join() ? previous : ids));
+      } catch {
+        if (current) setHeld([]);
+      }
+    };
+    void check();
+    // A take ends (and its lock is released) when the other tab saves it or is closed.
+    const timer = window.setInterval(() => void check(), 4000);
+    return () => {
+      current = false;
+      window.clearInterval(timer);
+    };
+  }, [watch]);
+  return held;
 }
 
 /**
@@ -84,9 +123,11 @@ export default function CaptureRecovery({
   const segments = useLiveQuery(() => db.segments.toArray()) ?? [];
   const pieces = useLiveQuery(() => db.pieces.toArray()) ?? [];
   const active = useActiveCaptureIds();
+  const elsewhere = useCapturesRecordingElsewhere(!!captures?.length);
   const titleId = useId();
+  if (!elsewhere) return null;
   const visible = (captures ?? [])
-    .filter(c => !active.includes(c.id))
+    .filter(c => !active.includes(c.id) && !elsewhere.includes(c.id))
     .filter(c => !lessonId || c.lessonId === lessonId || !c.origin)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   if (!visible.length) return null;
@@ -107,7 +148,6 @@ export default function CaptureRecovery({
           lessons={lessons}
           segments={segments}
           pieces={pieces}
-          fallbackLessonId={lessonId}
           notify={notify}
         />
       ))}
@@ -119,14 +159,12 @@ function CaptureRow({
   lessons,
   segments,
   pieces,
-  fallbackLessonId,
   notify,
 }: {
   capture: Capture;
   lessons: Lesson[];
   segments: Segment[];
   pieces: Piece[];
-  fallbackLessonId?: string;
   notify: Notify;
 }) {
   const confirm = useConfirm();
@@ -140,7 +178,7 @@ function CaptureRow({
   );
   const [choice, setChoice] = useState<string>(),
     [busy, setBusy] = useState(false);
-  const destination = choice ?? defaultDestination(capture, lessons, segments, fallbackLessonId);
+  const destination = choice ?? defaultDestination(capture, lessons, segments);
   const originLesson = lessons.find(l => l.id === capture.lessonId),
     originSegment = segments.find(s => s.id === capture.segmentId);
   const origin =
@@ -170,7 +208,7 @@ function CaptureRow({
           lesson.assetId &&
           !(await confirm({
             title: 'Substituir o áudio da aula?',
-            message: `“${lesson.title}” já tem um áudio. Ele será apagado e trocado por esta gravação. As anotações e os tempos delas continuam.`,
+            message: `“${lesson.title}” já tem um áudio. Ele será apagado e trocado por esta gravação. As anotações continuam, mas os tempos marcados nelas vão apontar para esta gravação.`,
             confirmLabel: 'Substituir áudio',
             danger: true,
           }))

@@ -87,7 +87,7 @@ describe('recovering interrupted captures', () => {
     expect(await (await db.assets.get(recording.assetId))!.blob.text()).toBe('AB');
     expect(await db.captures.count()).toBe(0);
   });
-  it('suggests the original place, or the open lesson for captures without origin', () => {
+  it('suggests the original place, and nothing for captures without origin', () => {
     const capture = { id: 'c', title: 't', mime: 'audio/webm', createdAt: '2026-09-26' };
     const lessons = [{ id: 'lesson' }],
       segments = [{ id: 'segment' }];
@@ -103,7 +103,8 @@ describe('recovering interrupted captures', () => {
     expect(defaultDestination({ ...capture, origin: 'attempt', segmentId: 'gone' }, lessons, segments)).toBe(
       'attempt:',
     );
-    expect(defaultDestination(capture, lessons, segments, 'lesson')).toBe('lesson:lesson');
+    // A practice take recorded without origin must not become a lesson's audio in one tap.
+    expect(defaultDestination(capture, lessons, segments)).toBe('');
   });
 });
 describe('editing a lesson', () => {

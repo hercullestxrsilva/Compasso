@@ -61,6 +61,18 @@ export function useActiveCaptureIds() {
     () => activeSnapshot,
   );
 }
+/** Every take holds this Web Lock until it is saved, so other tabs can tell a live capture from an interrupted one. */
+export const CAPTURE_LOCK_PREFIX = 'compasso-capture:';
+/** Resolves once the lock is held; call the returned function to release it. */
+function holdCaptureLock(captureId: string) {
+  return new Promise<() => void>(resolve => {
+    if (!navigator.locks?.request) return resolve(() => {});
+    void navigator.locks
+      .request(CAPTURE_LOCK_PREFIX + captureId, () => new Promise<void>(release => resolve(release)))
+      .catch(() => resolve(() => {}));
+  });
+}
+class CaptureGone extends Error {}
 const MAX_CAPTURE_BYTES = 90 * 1024 * 1024;
 export interface RecorderProps {
   onFile: (file: File) => Promise<void>;
@@ -226,7 +238,8 @@ export default function Recorder({
     setError('');
     setNotice('');
     let stream: MediaStream | undefined,
-      created = '';
+      created = '',
+      releaseLock = () => {};
     try {
       if (beforeStart && !(await beforeStart())) return;
       if (!alive.current) return;
@@ -267,6 +280,7 @@ export default function Recorder({
       let queue = Promise.resolve();
       markActive(captureId, true);
       created = captureId;
+      releaseLock = await holdCaptureLock(captureId);
       await db.captures.add({
         id: captureId,
         title: captureTitle(new Date()),
@@ -286,18 +300,26 @@ export default function Recorder({
         bytes += e.data.size;
         const type = e.data.type;
         queue = queue
-          .then(async () => {
-            // Some browsers only report the final container type once data arrives.
-            if (type && type !== mime) {
-              mime = type;
-              await db.captures.update(captureId, { mime: type });
-            }
-            await db.captureChunks.add({ id: uid(), captureId, index: chunkIndex, blob: e.data });
-          })
-          .catch(() => {
+          .then(() =>
+            db.transaction('rw', [db.captures, db.captureChunks], async () => {
+              // Deleted or recovered elsewhere (e.g. in a browser without Web Locks): stop instead of
+              // writing chunks that no capture row would ever list.
+              if (!(await db.captures.get(captureId))) throw new CaptureGone();
+              // Some browsers only report the final container type once data arrives.
+              if (type && type !== mime) {
+                mime = type;
+                await db.captures.update(captureId, { mime: type });
+              }
+              await db.captureChunks.add({ id: uid(), captureId, index: chunkIndex, blob: e.data });
+            }),
+          )
+          .catch(err => {
+            if (failed) return;
             failed = true;
             report(
-              'O dispositivo não conseguiu salvar uma parte da gravação. O áudio já gravado ficou em “Gravações recuperáveis”.',
+              err instanceof CaptureGone
+                ? 'Esta gravação foi excluída ou guardada em outra janela do app, por isso foi encerrada.'
+                : 'O dispositivo não conseguiu salvar uma parte da gravação. O áudio já gravado ficou em “Gravações recuperáveis”.',
             );
             if (recorder.state === 'recording') recorder.stop();
           });
@@ -334,6 +356,7 @@ export default function Recorder({
           take.current = null;
           setActivity(key, null);
           markActive(captureId, false);
+          releaseLock();
           if (alive.current) setPhase('idle');
           saved();
         }
@@ -356,7 +379,9 @@ export default function Recorder({
       stopMeter();
       if (created && !take.current) {
         markActive(created, false);
-        void clearCapture(created).catch(() => {});
+        void clearCapture(created)
+          .catch(() => {})
+          .finally(releaseLock);
       }
       if (alive.current) setError(errorText(err));
     } finally {
