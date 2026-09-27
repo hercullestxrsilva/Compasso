@@ -3,13 +3,34 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-    <meta name="theme-color" content="#123b40" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#123b40" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b1618" />
     <meta name="description" content="Seu repertório, suas aulas e cada trecho do seu estudo de piano." />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="apple-touch-icon" href="/icon-180.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <title>Compasso · estudos de piano</title>
+    <script>
+      // The saved theme (Preferências) applies before the first paint, so an evening visit never flashes
+      // white. Same rule as applyTheme() in src/theme.ts: no attribute means "follow the system".
+      (function () {
+        try {
+          var choice = localStorage.getItem('compasso:theme');
+          if (choice !== 'light' && choice !== 'dark') return;
+          document.documentElement.setAttribute('data-theme', choice);
+          document.querySelector('meta[name="color-scheme"]').setAttribute('content', choice);
+          var color = choice === 'dark' ? '#0b1618' : '#123b40';
+          document.querySelectorAll('meta[name="theme-color"]').forEach(function (meta) {
+            meta.setAttribute('content', color);
+          });
+        } catch (e) {
+          // Storage blocked (private mode): the system theme applies.
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
