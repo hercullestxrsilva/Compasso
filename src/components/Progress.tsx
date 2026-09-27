@@ -4,6 +4,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   type RefObject,
 } from 'react';
@@ -915,11 +916,14 @@ export default function Progress({
   onPractice,
   notify,
   initialTab = 'history',
+  onTabChange,
 }: {
   onPractice: (id: string) => void;
   notify: Notify;
   /** Lets the app open a tab directly, e.g. the reviews from the "Hoje" screen. */
   initialTab?: ProgressTab;
+  /** Tells the app shell which tab is open, so the address follows it. */
+  onTabChange?: (tab: ProgressTab) => void;
 }) {
   const confirm = useConfirm();
   const sessions = useLiveQuery(() => db.sessions.orderBy('startedAt').reverse().toArray()) ?? [];
@@ -1064,6 +1068,29 @@ export default function Progress({
       ))}
     </optgroup>
   ));
+  const chooseTab = (next: ProgressTab) => {
+    setTab(next);
+    onTabChange?.(next);
+  };
+  /** Arrow keys, Home and End move between the tabs that are not locked. */
+  const moveTab = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const buttons = [...e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]:not(:disabled)')];
+    const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    const next =
+      e.key === 'ArrowRight'
+        ? (at + 1) % buttons.length
+        : e.key === 'ArrowLeft'
+          ? (at - 1 + buttons.length) % buttons.length
+          : e.key === 'Home'
+            ? 0
+            : e.key === 'End'
+              ? buttons.length - 1
+              : -1;
+    if (at < 0 || next < 0) return;
+    e.preventDefault();
+    buttons[next].focus();
+    buttons[next].click();
+  };
   return (
     <>
       <div className="page-heading">
@@ -1107,7 +1134,7 @@ export default function Progress({
         </div>
       </div>
       <div className="toolbar">
-        <div className="tabs">
+        <div className="tabs" role="tablist" aria-label="Sua evolução" onKeyDown={moveTab}>
           {(
             [
               ['history', 'Histórico'],
@@ -1117,11 +1144,15 @@ export default function Progress({
           ).map(([k, v]) => (
             <button
               key={k}
+              type="button"
+              role="tab"
+              aria-selected={tab === k}
+              tabIndex={tab === k ? 0 : -1}
               className={tab === k ? 'active' : ''}
               // Leaving the tab would unmount the Recorder and stop the take before it is saved.
               disabled={recording && k !== tab}
               aria-describedby={recording && k !== tab ? 'progress-tabs-locked' : undefined}
-              onClick={() => setTab(k)}
+              onClick={() => chooseTab(k)}
             >
               {v}
             </button>

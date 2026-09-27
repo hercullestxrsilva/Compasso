@@ -583,13 +583,42 @@ export default function PieceDetail({
           )}
         </section>
         <aside className="study-aside">
-          <div className="tabs small-tabs">
+          <div
+            className="tabs small-tabs"
+            role="tablist"
+            aria-label="Estudo da peça"
+            onKeyDown={e => {
+              // Arrow keys, Home and End move between the tabs (roving focus).
+              const buttons = [...e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+              const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+              const moves: Record<string, number> = {
+                ArrowRight: at + 1,
+                ArrowLeft: at - 1,
+                Home: 0,
+                End: buttons.length - 1,
+              };
+              const step = moves[e.key];
+              if (at < 0 || step === undefined) return;
+              e.preventDefault();
+              const next = buttons[(step + buttons.length) % buttons.length];
+              next.focus();
+              next.click();
+            }}
+          >
             {[
               ['segments', 'Trechos'],
               ['notes', 'Notas'],
               ['tasks', 'Tarefas'],
             ].map(([k, v]) => (
-              <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>
+              <button
+                key={k}
+                type="button"
+                role="tab"
+                aria-selected={tab === k}
+                tabIndex={tab === k ? 0 : -1}
+                className={tab === k ? 'active' : ''}
+                onClick={() => setTab(k)}
+              >
                 {v}
               </button>
             ))}

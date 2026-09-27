@@ -180,9 +180,14 @@ export function Library({ onOpen, notify }: { onOpen: (id: string) => void; noti
         </button>
       </div>
       <div className="toolbar">
-        <div className="tabs" aria-label="Estado das peças">
+        <div className="tabs" role="group" aria-label="Estado das peças">
           {[['all', 'Todas'], ...Object.entries(statuses)].map(([key, label]) => (
-            <button className={filter === key ? 'active' : ''} key={key} onClick={() => setFilter(key)}>
+            <button
+              className={filter === key ? 'active' : ''}
+              aria-pressed={filter === key}
+              key={key}
+              onClick={() => setFilter(key)}
+            >
               {label}
               <span>{pieces.filter(p => key === 'all' || p.status === key).length}</span>
             </button>
