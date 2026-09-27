@@ -1,27 +1,82 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import {
-  Download,
-  Upload,
-  ShieldCheck,
-  Database,
+  AlertTriangle,
+  Check,
+  Clock,
   Cloud,
+  Database,
+  Download,
+  HardDrive,
   LogIn,
   LogOut,
-  Check,
-  HardDrive,
+  ShieldCheck,
   Sparkles,
+  Upload,
 } from 'lucide-react';
-import { makeBackup, parseBackup, restoreBackup, type Backup } from '../backup';
+import {
+  BACKUP_EVENT,
+  BACKUP_STALE_DAYS,
+  CLOUD_BACKUP_LIMIT,
+  backupAgeDays,
+  backupFileName,
+  describeBackupAge,
+  exportRoom,
+  formatBytes,
+  lastBackupAt,
+  makeBackupZip,
+  markBackup,
+  mediaBytes,
+  openBackup,
+  type BackupProgress,
+  type BackupSummary,
+} from '../backup';
+import { db } from '../db';
 import { cloud } from '../services';
-import { localDay } from '../domain';
-import { Modal, Field, ErrorBox, download, errorText } from './common';
+import { Field, download, errorText, useConfirm, type Notify } from './common';
+import '../styles/settings.css';
 interface CloudRow {
   id: string;
   created_at: string;
   path: string;
   bytes: number;
 }
-export default function Settings({ notify }: { notify: (s: string) => void }) {
+interface LibraryCounts {
+  pieces: number;
+  lessons: number;
+  recordings: number;
+  sessions: number;
+  assets: number;
+  captures: number;
+}
+interface Progress {
+  where: 'local' | 'cloud';
+  label: string;
+  done?: number;
+  total?: number;
+}
+const count = (n: number, one: string, many: string) =>
+  `${n.toLocaleString('pt-BR')} ${n === 1 ? one : many}`;
+const joinPt = (items: string[]) =>
+  items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} e ${items[items.length - 1]}`;
+const describeLibrary = (c: Pick<LibraryCounts, 'pieces' | 'lessons' | 'recordings' | 'sessions'>) =>
+  joinPt([
+    count(c.pieces, 'peça', 'peças'),
+    count(c.lessons, 'aula', 'aulas'),
+    count(c.recordings, 'gravação', 'gravações'),
+    count(c.sessions, 'sessão', 'sessões'),
+  ]);
+const formatWhen = (iso: string) => {
+  const date = new Date(iso.length === 10 ? `${iso}T12:00:00` : iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return iso.length === 10
+    ? date.toLocaleDateString('pt-BR', { dateStyle: 'long' })
+    : date.toLocaleString('pt-BR', { dateStyle: 'long', timeStyle: 'short' });
+};
+const hasData = (c?: LibraryCounts) => !!c && c.pieces + c.lessons + c.recordings + c.sessions + c.assets > 0;
+
+export default function Settings({ notify }: { notify: Notify }) {
+  const confirm = useConfirm();
   const [offlineReady, setOfflineReady] = useState(false);
   useEffect(() => {
     let active = true;
@@ -35,14 +90,52 @@ export default function Settings({ notify }: { notify: (s: string) => void }) {
   }, []);
   const [quota, setQuota] = useState<StorageEstimate>(),
     [persistent, setPersistent] = useState(false),
-    [busy, setBusy] = useState(''),
-    [error, setError] = useState(''),
-    [restore, setRestore] = useState<Backup>();
+    [busy, setBusy] = useState<'' | 'export' | 'restore' | 'cloud' | 'login'>(''),
+    [progress, setProgress] = useState<Progress>(),
+    [last, setLast] = useState(lastBackupAt);
   const [email, setEmail] = useState(''),
     [password, setPassword] = useState(''),
     [user, setUser] = useState(''),
     [backups, setBackups] = useState<CloudRow[]>([]),
     [ai, setAi] = useState('Verificando serviço…');
+  const exportFirst = useRef<Promise<unknown> | undefined>(undefined);
+  const library = useLiveQuery(async () => {
+    const [pieces, lessons, recordings, sessions, assets, captures] = await Promise.all([
+      db.pieces.count(),
+      db.lessons.count(),
+      db.recordings.count(),
+      db.sessions.count(),
+      db.assets.count(),
+      db.captures.count(),
+    ]);
+    return { pieces, lessons, recordings, sessions, assets, captures };
+  });
+  const since = useLiveQuery(
+    async () =>
+      last
+        ? {
+            sessions: await db.sessions.where('startedAt').above(last).count(),
+            files: await db.assets.filter(a => a.createdAt > last).count(),
+          }
+        : undefined,
+    [last],
+  );
+  useEffect(() => {
+    const sync = () => setLast(lastBackupAt());
+    window.addEventListener(BACKUP_EVENT, sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener(BACKUP_EVENT, sync);
+      window.removeEventListener('storage', sync);
+    };
+  }, []);
+  useEffect(() => {
+    if (!busy || busy === 'login') return;
+    // Leaving mid-restore is safe (the transaction rolls back) but loses the work in progress.
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [busy]);
   const refreshCloud = async () => {
     if (!cloud) return;
     const { data: session } = await cloud!.auth.getSession();
@@ -79,22 +172,140 @@ export default function Settings({ notify }: { notify: (s: string) => void }) {
       alive = false;
     };
   }, []);
+
+  const saveBackupFile = async (onProgress?: (p: BackupProgress) => void) => {
+    const { blob } = await makeBackupZip(onProgress);
+    download(blob, backupFileName());
+    markBackup();
+    return blob;
+  };
   const exportBackup = async () => {
     setBusy('export');
-    setError('');
     try {
-      const backup = await makeBackup();
-      download(
-        new Blob([JSON.stringify(backup)], { type: 'application/json' }),
-        `compasso-backup-${localDay()}.json`,
+      const bytes = await mediaBytes();
+      const room = exportRoom(bytes, await navigator.storage?.estimate().catch(() => undefined));
+      if (room === 'too-large')
+        throw new Error(
+          `Os arquivos do acervo somam ${formatBytes(bytes)} e passam de 4 GB, o limite de um backup. Apague gravações que você não usa mais e tente de novo.`,
+        );
+      if (
+        room === 'tight' &&
+        !(await confirm({
+          title: 'Pouco espaço livre',
+          message: `O navegador indica menos espaço livre do que este backup precisa (cerca de ${formatBytes(bytes)}). A exportação pode falhar no meio, sem prejudicar seus dados.`,
+          confirmLabel: 'Exportar mesmo assim',
+        }))
+      )
+        return;
+      setProgress({ where: 'local', label: 'Preparando o backup' });
+      const blob = await saveBackupFile(p =>
+        setProgress({ where: 'local', label: 'Compactando o acervo', ...p }),
       );
-      notify('Backup exportado com partituras, áudios e anotações.');
+      notify(
+        `Backup exportado (${formatBytes(blob.size)}) com partituras, gravações, marcações e histórico.`,
+      );
     } catch (e) {
-      setError(errorText(e));
+      notify(errorText(e), 'error');
     } finally {
       setBusy('');
+      setProgress(undefined);
     }
   };
+  const restore = async (where: Progress['where'], load: () => Promise<Blob>) => {
+    setBusy('restore');
+    exportFirst.current = undefined;
+    try {
+      setProgress({ where, label: where === 'cloud' ? 'Baixando a cópia' : 'Abrindo o arquivo' });
+      const prepared = await openBackup(await load(), p =>
+        setProgress({ where, label: 'Verificando o backup', ...p }),
+      );
+      setProgress(undefined);
+      const ok = await confirm({
+        title: 'Restaurar este backup?',
+        message: (
+          <RestoreSummary
+            summary={prepared.summary}
+            current={library}
+            onExportFirst={() => (exportFirst.current = saveBackupFile())}
+          />
+        ),
+        confirmLabel: 'Substituir e restaurar',
+        danger: true,
+      });
+      if (!ok) return;
+      if (exportFirst.current) {
+        setProgress({ where, label: 'Terminando a cópia do acervo atual' });
+        try {
+          await exportFirst.current;
+        } catch {
+          throw new Error(
+            'A cópia do acervo atual não foi concluída, então a restauração foi cancelada. Nenhum dado foi alterado.',
+          );
+        }
+      }
+      setProgress({ where, label: 'Restaurando' });
+      await prepared.apply();
+      // The data here now matches that backup, so it counts as backed up as of its date.
+      markBackup(prepared.summary.createdAt);
+      notify('Backup restaurado neste navegador.');
+    } catch (e) {
+      notify(errorText(e), 'error');
+    } finally {
+      setBusy('');
+      setProgress(undefined);
+    }
+  };
+  const uploadCloud = async () => {
+    setBusy('cloud');
+    let path = '';
+    try {
+      const bytes = await mediaBytes();
+      if (bytes > CLOUD_BACKUP_LIMIT)
+        throw new Error(
+          `A cópia na nuvem aceita até ${formatBytes(CLOUD_BACKUP_LIMIT)}, e os arquivos do acervo somam ${formatBytes(bytes)}. Use “Exportar backup” para guardar tudo.`,
+        );
+      setProgress({ where: 'cloud', label: 'Preparando a cópia' });
+      const { blob } = await makeBackupZip(p =>
+        setProgress({ where: 'cloud', label: 'Compactando o acervo', ...p }),
+      );
+      if (blob.size > CLOUD_BACKUP_LIMIT)
+        throw new Error(
+          `A cópia na nuvem aceita até ${formatBytes(CLOUD_BACKUP_LIMIT)}, e este backup tem ${formatBytes(blob.size)}. Use “Exportar backup” para guardar tudo.`,
+        );
+      const { data } = await cloud!.auth.getUser();
+      if (!data.user) throw new Error('Entre novamente na sua conta.');
+      const id = crypto.randomUUID();
+      path = `${data.user.id}/${id}.zip`;
+      setProgress({ where: 'cloud', label: 'Enviando para a nuvem' });
+      const upload = await cloud!.storage
+        .from('compasso-backups')
+        .upload(path, blob, { contentType: 'application/zip', upsert: false });
+      if (upload.error) throw upload.error;
+      const insert = await cloud!
+        .from('compasso_backups')
+        .insert({ id, owner_id: data.user.id, path, bytes: blob.size });
+      if (insert.error) throw new Error(insert.error.message);
+      path = '';
+      markBackup();
+      await refreshCloud();
+      notify('Nova cópia salva na nuvem.');
+    } catch (e) {
+      if (path) await cloud!.storage.from('compasso-backups').remove([path]);
+      notify(errorText(e), 'error');
+    } finally {
+      setBusy('');
+      setProgress(undefined);
+    }
+  };
+
+  const days = backupAgeDays(last);
+  const newWork = since
+    ? [
+        since.sessions ? count(since.sessions, 'sessão nova', 'sessões novas') : '',
+        since.files ? count(since.files, 'arquivo novo', 'arquivos novos') : '',
+      ].filter(Boolean)
+    : [];
+  const stale = hasData(library) && (days === null || days > BACKUP_STALE_DAYS || (since?.files ?? 0) > 0);
   return (
     <>
       <div className="page-heading">
@@ -104,45 +315,67 @@ export default function Settings({ notify }: { notify: (s: string) => void }) {
           <p>Guarde uma cópia do que você está construindo.</p>
         </div>
       </div>
-      <ErrorBox message={error} />
       <div className="settings-grid">
         <section className="panel">
           <ShieldCheck size={27} />
           <h2>Backup completo</h2>
           <p>
-            Exporte partituras, gravações, marcações, aulas e histórico em um único arquivo. A restauração
-            substitui o acervo deste navegador.
+            Exporte partituras, gravações, marcações, aulas e histórico em um único arquivo .zip. A
+            restauração aceita também backups .json antigos e substitui o acervo deste navegador.
           </p>
+          <div className={`backup-status${stale ? ' stale' : ''}`}>
+            {stale ? <AlertTriangle size={19} aria-hidden /> : <Clock size={19} aria-hidden />}
+            <div>
+              <strong>
+                {last && days !== null
+                  ? `Último backup: ${describeBackupAge(days)}`
+                  : 'Nenhum backup feito neste navegador'}
+              </strong>
+              <small>
+                {last
+                  ? `${formatWhen(last)}.${newWork.length ? ` Desde então: ${joinPt(newWork)}.` : ''}${
+                      days !== null && days > BACKUP_STALE_DAYS
+                        ? ' Faz mais de uma semana: vale exportar uma cópia nova.'
+                        : ''
+                    }`
+                  : hasData(library)
+                    ? 'Seu acervo existe só aqui. Exporte uma cópia para não depender deste navegador.'
+                    : 'Depois de adicionar peças e gravações, exporte uma cópia de vez em quando.'}
+              </small>
+            </div>
+          </div>
           <div className="row wrap">
             <button className="btn" disabled={!!busy} onClick={() => void exportBackup()}>
               <Download size={17} />
-              {busy === 'export' ? 'Preparando…' : 'Exportar backup'}
+              {busy === 'export' ? 'Exportando…' : 'Exportar backup'}
             </button>
-            <label className="btn secondary file-button">
+            <label className={`btn secondary file-button${busy ? ' is-disabled' : ''}`}>
               <Upload size={17} />
-              Restaurar arquivo
+              {busy === 'restore' && progress?.where === 'local' ? 'Restaurando…' : 'Restaurar arquivo'}
               <input
                 type="file"
-                accept="application/json,.json"
+                accept=".zip,.json,application/zip,application/json"
                 disabled={!!busy}
-                onChange={async e => {
+                onChange={e => {
                   const file = e.target.files?.[0];
-                  if (!file) return;
-                  setError('');
-                  try {
-                    if (file.size > 180 * 1024 * 1024) throw new Error('O arquivo excede 180 MB.');
-                    setRestore(parseBackup(await file.text()));
-                  } catch (err) {
-                    setError(errorText(err));
-                  }
                   e.target.value = '';
+                  if (file) void restore('local', async () => file);
                 }}
               />
             </label>
           </div>
+          {progress?.where === 'local' && <ProgressBar {...progress} />}
+          {!!library?.captures && (
+            <p className="backup-captures">
+              <AlertTriangle size={15} aria-hidden />
+              {library.captures === 1
+                ? 'Há 1 gravação interrompida ainda não recuperada. Ela não entra no backup.'
+                : `Há ${library.captures} gravações interrompidas ainda não recuperadas. Elas não entram no backup.`}
+            </p>
+          )}
           <p className="hint">
-            O arquivo contém seus dados pessoais e gravações. Guarde-o em um local de sua confiança. Capturas
-            ainda não finalizadas precisam ser recuperadas em Aulas antes de exportar.
+            O arquivo contém seus dados pessoais e gravações. Guarde-o em um local de sua confiança. Para
+            exportar, o navegador precisa de espaço livre parecido com o tamanho do acervo.
           </p>
         </section>
         <section className="panel">
@@ -169,8 +402,7 @@ export default function Settings({ notify }: { notify: (s: string) => void }) {
                 />
               </div>
               <p>
-                {((quota.usage ?? 0) / 1024 / 1024).toFixed(1)} MB usados · quota aproximada{' '}
-                {((quota.quota ?? 0) / 1024 / 1024 / 1024).toFixed(1)} GB
+                {formatBytes(quota.usage ?? 0)} usados · quota aproximada {formatBytes(quota.quota ?? 0)}
               </p>
             </>
           )}
@@ -185,9 +417,10 @@ export default function Settings({ notify }: { notify: (s: string) => void }) {
                   ok
                     ? 'O navegador concedeu armazenamento persistente.'
                     : 'O navegador não concedeu persistência. Mantenha um backup exportado.',
+                  ok ? 'success' : 'info',
                 );
               } catch (e) {
-                setError(errorText(e));
+                notify(errorText(e), 'error');
               }
             }}
           >
@@ -203,7 +436,8 @@ export default function Settings({ notify }: { notify: (s: string) => void }) {
           <h2>Cópias na nuvem</h2>
           <p>
             Quando configuradas, permitem salvar e recuperar cópias completas entre iPad e computador. São
-            backups manuais, não mesclagem automática de alterações.
+            backups manuais, não mesclagem automática de alterações. Cada cópia aceita até{' '}
+            {formatBytes(CLOUD_BACKUP_LIMIT)}.
           </p>
           {!cloud ? (
             <div className="status-box">
@@ -215,79 +449,47 @@ export default function Settings({ notify }: { notify: (s: string) => void }) {
                 <span>{user}</span>
                 <button
                   className="btn small secondary"
+                  disabled={!!busy}
                   onClick={async () => {
-                    await cloud!.auth.signOut();
-                    setUser('');
-                    setBackups([]);
+                    try {
+                      await cloud!.auth.signOut();
+                      setUser('');
+                      setBackups([]);
+                    } catch (e) {
+                      notify(errorText(e), 'error');
+                    }
                   }}
                 >
                   <LogOut size={15} />
                   Sair
                 </button>
               </div>
-              <button
-                className="btn"
-                disabled={!!busy}
-                onClick={async () => {
-                  setBusy('cloud');
-                  setError('');
-                  let path = '';
-                  try {
-                    const backup = await makeBackup();
-                    const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' });
-                    if (blob.size > 45 * 1024 * 1024)
-                      throw new Error(
-                        'O backup na nuvem aceita até 45 MB nesta versão. Use a exportação local para acervos maiores.',
-                      );
-                    const { data } = await cloud!.auth.getUser();
-                    if (!data.user) throw new Error('Entre novamente na sua conta.');
-                    const id = crypto.randomUUID();
-                    path = `${data.user.id}/${id}.json`;
-                    const upload = await cloud!.storage
-                      .from('compasso-backups')
-                      .upload(path, blob, { contentType: 'application/json', upsert: false });
-                    if (upload.error) throw upload.error;
-                    const insert = await cloud!
-                      .from('compasso_backups')
-                      .insert({ id, owner_id: data.user.id, path, bytes: blob.size });
-                    if (insert.error) throw insert.error;
-                    path = '';
-                    await refreshCloud();
-                    notify('Nova cópia salva na nuvem.');
-                  } catch (e) {
-                    if (path) await cloud!.storage.from('compasso-backups').remove([path]);
-                    setError(errorText(e));
-                  } finally {
-                    setBusy('');
-                  }
-                }}
-              >
+              <button className="btn" disabled={!!busy} onClick={() => void uploadCloud()}>
                 <Upload size={16} />
                 {busy === 'cloud' ? 'Enviando…' : 'Criar cópia na nuvem'}
               </button>
+              {progress?.where === 'cloud' && <ProgressBar {...progress} />}
               {backups.map(b => (
                 <div className="simple-row" key={b.id}>
                   <div>
                     <strong>{new Date(b.created_at).toLocaleString('pt-BR')}</strong>
-                    <small>{(b.bytes / 1024 / 1024).toFixed(1)} MB</small>
+                    <small>
+                      {formatBytes(b.bytes)}
+                      {b.path.endsWith('.json') ? ' · formato antigo (.json)' : ''}
+                    </small>
                   </div>
                   <button
                     className="btn small secondary"
                     disabled={!!busy}
-                    onClick={async () => {
-                      setBusy('download');
-                      try {
+                    onClick={() =>
+                      void restore('cloud', async () => {
                         const { data, error } = await cloud!.storage
                           .from('compasso-backups')
                           .download(b.path);
                         if (error) throw error;
-                        setRestore(parseBackup(await data.text()));
-                      } catch (e) {
-                        setError(errorText(e));
-                      } finally {
-                        setBusy('');
-                      }
-                    }}
+                        return data;
+                      })
+                    }
                   >
                     Restaurar
                   </button>
@@ -299,14 +501,13 @@ export default function Settings({ notify }: { notify: (s: string) => void }) {
               onSubmit={async e => {
                 e.preventDefault();
                 setBusy('login');
-                setError('');
                 try {
                   const { error } = await cloud!.auth.signInWithPassword({ email, password });
                   if (error) throw error;
                   setPassword('');
                   await refreshCloud();
                 } catch (err) {
-                  setError(errorText(err));
+                  notify(errorText(err), 'error');
                 } finally {
                   setBusy('');
                 }
@@ -385,42 +586,107 @@ export default function Settings({ notify }: { notify: (s: string) => void }) {
           </p>
         </section>
       </div>
-      {restore && (
-        <Modal title="Restaurar este backup?" onClose={() => setRestore(undefined)}>
-          <p>
-            Este arquivo contém{' '}
-            <strong>
-              {restore.tables.pieces.length} peças, {restore.tables.lessons.length} aulas e{' '}
-              {restore.tables.sessions.length} sessões
-            </strong>
-            .
-          </p>
-          <p>O acervo atual será substituído. Exporte uma cópia antes de continuar, se quiser preservá-lo.</p>
-          <footer className="modal-actions">
-            <button className="btn secondary" disabled={!!busy} onClick={() => setRestore(undefined)}>
-              Cancelar
-            </button>
-            <button
-              className="btn danger"
-              disabled={!!busy}
-              onClick={async () => {
-                setBusy('restore');
-                try {
-                  await restoreBackup(restore);
-                  setRestore(undefined);
-                  notify('Backup restaurado neste dispositivo.');
-                } catch (e) {
-                  setError(errorText(e));
-                } finally {
-                  setBusy('');
-                }
-              }}
-            >
-              {busy === 'restore' ? 'Restaurando…' : 'Substituir e restaurar'}
-            </button>
-          </footer>
-        </Modal>
-      )}
     </>
+  );
+}
+
+function ProgressBar({ label, done, total }: Progress) {
+  const pct = total ? Math.min(100, Math.floor(((done ?? 0) / total) * 100)) : undefined;
+  return (
+    <div className="backup-progress">
+      <div className="backup-progress-label">
+        <span role="status">{label}…</span>
+        {pct !== undefined && <span aria-hidden>{pct}%</span>}
+      </div>
+      <div
+        className={`backup-progress-bar${pct === undefined ? ' indeterminate' : ''}`}
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={pct}
+      >
+        <span style={pct === undefined ? undefined : { width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function RestoreSummary({
+  summary,
+  current,
+  onExportFirst,
+}: {
+  summary: BackupSummary;
+  current?: LibraryCounts;
+  onExportFirst: () => Promise<unknown>;
+}) {
+  const items: [number, string, string][] = [
+    [summary.pieces, 'peça', 'peças'],
+    [summary.lessons, 'aula', 'aulas'],
+    [summary.recordings, 'gravação', 'gravações'],
+    [summary.sessions, 'sessão', 'sessões'],
+  ];
+  return (
+    <div className="restore-summary">
+      <p>
+        Backup de <strong>{formatWhen(summary.createdAt)}</strong>
+        {summary.version === 1 ? ', formato antigo (.json)' : ''} · {formatBytes(summary.bytes)}
+      </p>
+      <ul className="restore-counts">
+        {items.map(([n, one, many]) => (
+          <li key={one}>
+            <strong>{n.toLocaleString('pt-BR')}</strong> {n === 1 ? one : many}
+          </li>
+        ))}
+      </ul>
+      <p className="restore-warning">
+        <AlertTriangle size={18} aria-hidden />
+        <span>
+          {hasData(current)
+            ? `Tudo o que está neste navegador (${describeLibrary(current!)}) será apagado e substituído pelo backup. Não é possível desfazer.`
+            : 'Este navegador ainda não tem dados, então nada será perdido.'}
+        </span>
+      </p>
+      {hasData(current) && <ExportFirst run={onExportFirst} />}
+    </div>
+  );
+}
+
+function ExportFirst({ run }: { run: () => Promise<unknown> }) {
+  const [state, setState] = useState<'idle' | 'busy' | 'done' | 'error'>('idle'),
+    [error, setError] = useState('');
+  if (state === 'done')
+    return (
+      <p className="export-first-done" role="status">
+        <Check size={16} aria-hidden /> Cópia do acervo atual exportada.
+      </p>
+    );
+  return (
+    <div className="export-first">
+      <button
+        type="button"
+        className="btn secondary"
+        disabled={state === 'busy'}
+        onClick={async () => {
+          setState('busy');
+          try {
+            await run();
+            setState('done');
+          } catch (e) {
+            setError(errorText(e));
+            setState('error');
+          }
+        }}
+      >
+        <Download size={16} />
+        {state === 'busy' ? 'Exportando o acervo atual…' : 'Exportar o acervo atual antes'}
+      </button>
+      {state === 'error' && (
+        <p role="alert" className="error-box">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }
