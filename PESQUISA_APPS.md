@@ -6,16 +6,16 @@ O recorte é o uso definido para este projeto: estudo com professor, partituras 
 
 ## Referências e aplicação ao projeto
 
-| Produto | O que a fonte oficial descreve | Como aproveitar no nosso app |
-|---|---|---|
-| forScore | Camadas de anotações, links entre pontos da partitura, botões para ações e virada de meia página | Acessar exercícios diretamente do trecho e preservar a leitura durante a virada |
-| Newzik | Biblioteca sincronizada, uso offline após download, projetos e anotações em camadas | Separar materiais, versões e anotações, com estado de sincronização visível |
-| Soundslice | Trechos salvos, modo foco, treino de velocidade, notas privadas e partitura sincronizada com mídia | Salvar o contexto de cada exercício e ampliar somente o trecho em estudo |
-| Modacity | Listas de prática, cronômetro, notas, gravações e comparação de gravações | Criar uma rotina reutilizável e observar evolução por evidências |
-| Piano Marvel | Divisão de peças em seções, mãos separadas, diferentes andamentos e modos de preparação/avaliação | Modelar progressão por trecho, mão e BPM |
-| flowkey | Mãos separadas, repetição de seções, velocidade reduzida e espera pela nota correta | Tornar explícito o modo mão esquerda, direita ou ambas |
-| Practice Space | Tarefas com anexos, histórico, gravações vinculadas às tarefas e notas por voz | Conectar orientação, exercício e resultado da prática |
-| Soundbrenner | Biblioteca de configurações e acompanhamento de prática; materiais oficiais também descrevem treino com silêncio e progressão de BPM | Evoluir o metrônomo com configurações salvas e desafios rítmicos opcionais |
+| Produto        | O que a fonte oficial descreve                                                                                                       | Como aproveitar no nosso app                                                    |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| forScore       | Camadas de anotações, links entre pontos da partitura, botões para ações e virada de meia página                                     | Acessar exercícios diretamente do trecho e preservar a leitura durante a virada |
+| Newzik         | Biblioteca sincronizada, uso offline após download, projetos e anotações em camadas                                                  | Separar materiais, versões e anotações, com estado de sincronização visível     |
+| Soundslice     | Trechos salvos, modo foco, treino de velocidade, notas privadas e partitura sincronizada com mídia                                   | Salvar o contexto de cada exercício e ampliar somente o trecho em estudo        |
+| Modacity       | Listas de prática, cronômetro, notas, gravações e comparação de gravações                                                            | Criar uma rotina reutilizável e observar evolução por evidências                |
+| Piano Marvel   | Divisão de peças em seções, mãos separadas, diferentes andamentos e modos de preparação/avaliação                                    | Modelar progressão por trecho, mão e BPM                                        |
+| flowkey        | Mãos separadas, repetição de seções, velocidade reduzida e espera pela nota correta                                                  | Tornar explícito o modo mão esquerda, direita ou ambas                          |
+| Practice Space | Tarefas com anexos, histórico, gravações vinculadas às tarefas e notas por voz                                                       | Conectar orientação, exercício e resultado da prática                           |
+| Soundbrenner   | Biblioteca de configurações e acompanhamento de prática; materiais oficiais também descrevem treino com silêncio e progressão de BPM | Evoluir o metrônomo com configurações salvas e desafios rítmicos opcionais      |
 
 ### forScore: partitura como ponto de entrada
 
@@ -69,24 +69,24 @@ O manual descreve acentos, biblioteca e organização em setlists. Um artigo ofi
 
 As prioridades abaixo são uma avaliação de produto para este projeto, não uma classificação dos aplicativos pesquisados. “P0” significa refinar o escopo principal já definido; “P1” significa evolução após o fluxo básico estar estável; “P2” significa experimento ou expansão. Esforço é relativo e não é estimativa de prazo.
 
-| Prioridade | Funcionalidade | Exemplo de uso | Esforço relativo |
-|---|---|---|---|
-| P0 | Cartão de estudo por trecho | Abrir compassos 17–24 com objetivo, mão, orientação e preset | Médio; amplia entidades já previstas |
-| P0 | Marcar dificuldade rapidamente | Selecionar uma região e marcar “revisar ritmo” sem preencher um formulário longo | Baixo a médio |
-| P0 | Modo foco com contexto | Ampliar o trecho e incluir o compasso anterior para preparar a entrada | Médio |
-| P0 | Camadas nomeadas de anotação | Mostrar só dedilhado ou só orientações do professor | Médio; já previsto conceitualmente |
-| P0 | Meta e conclusão por tentativa | Registrar “confortável a 60 BPM” sem confundir tempo com domínio | Baixo a médio |
-| P1 | Roteiros reutilizáveis | Aquecimento → trecho A → trecho B → revisão, com tempos próprios | Médio |
-| P1 | Progressão por mão e BPM | Guardar 72 BPM na direita e 56 BPM com as duas mãos | Médio |
-| P1 | Gravação vinculada ao exercício | Comparar duas tentativas do mesmo trecho em datas diferentes | Médio; depende de captura estável |
-| P1 | Revisão do repertório | Relembrar peças estudadas conforme data e autoavaliação | Médio |
-| P1 | Preparação da próxima aula | Reunir dúvidas, dificuldades e gravações selecionadas | Baixo a médio |
-| P1 | Nota curta por voz | Ditar “troquei o dedilhado no compasso 19” após a prática | Médio; depende de transcrição |
-| P1 | Virada de meia página e saltos | Antecipar a próxima página ou voltar ao início de uma repetição | Médio; precisa de teste no iPad |
-| P2 | Treino com compassos silenciosos | Quatro compassos com clique e dois sem clique | Médio; requer motor de áudio estável |
-| P2 | Compartilhamento com o professor | Enviar um trecho, uma dúvida e uma tentativa | Alto; adiciona permissões e colaboração |
-| P2 | Leitura à primeira vista | Abrir material novo com preparação e registro de dificuldade | Médio sem avaliação automática |
-| P2 | MIDI, reconhecimento e partitura executável | Medir notas tocadas ou reproduzir uma partitura digital | Alto; exige validação técnica própria |
+| Prioridade | Funcionalidade                              | Exemplo de uso                                                                   | Esforço relativo                        |
+| ---------- | ------------------------------------------- | -------------------------------------------------------------------------------- | --------------------------------------- |
+| P0         | Cartão de estudo por trecho                 | Abrir compassos 17–24 com objetivo, mão, orientação e preset                     | Médio; amplia entidades já previstas    |
+| P0         | Marcar dificuldade rapidamente              | Selecionar uma região e marcar “revisar ritmo” sem preencher um formulário longo | Baixo a médio                           |
+| P0         | Modo foco com contexto                      | Ampliar o trecho e incluir o compasso anterior para preparar a entrada           | Médio                                   |
+| P0         | Camadas nomeadas de anotação                | Mostrar só dedilhado ou só orientações do professor                              | Médio; já previsto conceitualmente      |
+| P0         | Meta e conclusão por tentativa              | Registrar “confortável a 60 BPM” sem confundir tempo com domínio                 | Baixo a médio                           |
+| P1         | Roteiros reutilizáveis                      | Aquecimento → trecho A → trecho B → revisão, com tempos próprios                 | Médio                                   |
+| P1         | Progressão por mão e BPM                    | Guardar 72 BPM na direita e 56 BPM com as duas mãos                              | Médio                                   |
+| P1         | Gravação vinculada ao exercício             | Comparar duas tentativas do mesmo trecho em datas diferentes                     | Médio; depende de captura estável       |
+| P1         | Revisão do repertório                       | Relembrar peças estudadas conforme data e autoavaliação                          | Médio                                   |
+| P1         | Preparação da próxima aula                  | Reunir dúvidas, dificuldades e gravações selecionadas                            | Baixo a médio                           |
+| P1         | Nota curta por voz                          | Ditar “troquei o dedilhado no compasso 19” após a prática                        | Médio; depende de transcrição           |
+| P1         | Virada de meia página e saltos              | Antecipar a próxima página ou voltar ao início de uma repetição                  | Médio; precisa de teste no iPad         |
+| P2         | Treino com compassos silenciosos            | Quatro compassos com clique e dois sem clique                                    | Médio; requer motor de áudio estável    |
+| P2         | Compartilhamento com o professor            | Enviar um trecho, uma dúvida e uma tentativa                                     | Alto; adiciona permissões e colaboração |
+| P2         | Leitura à primeira vista                    | Abrir material novo com preparação e registro de dificuldade                     | Médio sem avaliação automática          |
+| P2         | MIDI, reconhecimento e partitura executável | Medir notas tocadas ou reproduzir uma partitura digital                          | Alto; exige validação técnica própria   |
 
 ## Três fluxos que eu priorizaria
 
@@ -115,15 +115,15 @@ Observação opcional: texto ou gravação curta
 
 A pesquisa reforça a arquitetura existente. Não exige trocar React, PostgreSQL, o visualizador PDF ou o motor de prática. As extensões devem ser incrementais:
 
-| Extensão proposta | Dados necessários | Regra importante |
-|---|---|---|
-| Camadas explícitas | AnnotationLayer e layer_id em Annotation | Origem “professor” não significa autoria autenticada do professor |
-| Rotinas | PracticeRoutine e RoutineItem com ordem, trecho e preset | Snapshot da rotina na sessão preserva o histórico |
-| Gravações de prática | PracticeRecording ligado a sessão, trecho e Asset | Separar tentativa de prática de gravação de aula |
-| Evolução por mão | Avaliação ligada a trecho, mão, BPM, unidade e data | Comparar condições equivalentes; mostrar se é autoavaliação |
-| Revisões | ReviewSchedule com data e regra editável | Manter revisão independente do estado “Estudada” da peça |
-| Navegação na partitura | ScoreNavigationAnchor ligado à versão e coordenadas | Recorte de foco e links não alteram o PDF original |
-| Dúvidas para a aula | Note com tipo e estado resolvida/pendente | Cada dúvida pode referenciar evidência ou trecho |
+| Extensão proposta      | Dados necessários                                        | Regra importante                                                  |
+| ---------------------- | -------------------------------------------------------- | ----------------------------------------------------------------- |
+| Camadas explícitas     | AnnotationLayer e layer_id em Annotation                 | Origem “professor” não significa autoria autenticada do professor |
+| Rotinas                | PracticeRoutine e RoutineItem com ordem, trecho e preset | Snapshot da rotina na sessão preserva o histórico                 |
+| Gravações de prática   | PracticeRecording ligado a sessão, trecho e Asset        | Separar tentativa de prática de gravação de aula                  |
+| Evolução por mão       | Avaliação ligada a trecho, mão, BPM, unidade e data      | Comparar condições equivalentes; mostrar se é autoavaliação       |
+| Revisões               | ReviewSchedule com data e regra editável                 | Manter revisão independente do estado “Estudada” da peça          |
+| Navegação na partitura | ScoreNavigationAnchor ligado à versão e coordenadas      | Recorte de foco e links não alteram o PDF original                |
+| Dúvidas para a aula    | Note com tipo e estado resolvida/pendente                | Cada dúvida pode referenciar evidência ou trecho                  |
 
 As entidades extras entram quando a funcionalidade correspondente for construída. Antes disso, cartões, marcação rápida e metas podem reutilizar PracticeSegment, StudyTask, PracticePreset e Note já previstos.
 

@@ -12,7 +12,14 @@ export function pdfResources(version: string, origin: string) {
   };
 }
 
-export async function renderPdfPage({ blob, canvas, page, width, zoom, signal }: {
+export async function renderPdfPage({
+  blob,
+  canvas,
+  page,
+  width,
+  zoom,
+  signal,
+}: {
   blob: Blob;
   canvas: HTMLCanvasElement;
   page: number;
@@ -44,11 +51,14 @@ export async function renderPdfPage({ blob, canvas, page, width, zoom, signal }:
     const pdfPage = await document.getPage(Math.min(page, document.numPages));
     signal.throwIfAborted();
     const base = pdfPage.getViewport({ scale: 1 });
-    const cssScale = width * zoom / base.width;
+    const cssScale = (width * zoom) / base.width;
     // Bound backing-store memory on tablets without changing annotation coordinates.
-    const density = Math.min(globalThis.devicePixelRatio || 1, 1.6,
+    const density = Math.min(
+      globalThis.devicePixelRatio || 1,
+      1.6,
       Math.sqrt(8_000_000 / (base.width * base.height * cssScale ** 2)),
-      8192 / (Math.max(base.width, base.height) * cssScale));
+      8192 / (Math.max(base.width, base.height) * cssScale),
+    );
     const viewport = pdfPage.getViewport({ scale: cssScale * density });
     // A canceled render must never clear or overwrite the canvas of a newer render.
     const buffer = window.document.createElement('canvas');

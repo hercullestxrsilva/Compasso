@@ -16,13 +16,13 @@ A prioridade é uma aplicação pessoal, com conta e sincronização entre dispo
 
 ## Experiência de uso
 
-| Área | O que você poderá fazer |
-|---|---|
-| Hoje | Retomar o último estudo, ver tarefas do professor e iniciar um plano de 15, 30 ou 45 minutos |
+| Área       | O que você poderá fazer                                                                                  |
+| ---------- | -------------------------------------------------------------------------------------------------------- |
+| Hoje       | Retomar o último estudo, ver tarefas do professor e iniciar um plano de 15, 30 ou 45 minutos             |
 | Repertório | Organizar peças em Quero estudar, Estudando e Estudadas; filtrar por compositor, dificuldade e etiquetas |
-| Partitura | Ler, escrever, destacar, inserir dedilhados, marcar dificuldades e abrir o modo de prática |
-| Aulas | Guardar gravações, mensagens, anexos, notas e orientações; ouvir e consultar a transcrição |
-| Evolução | Consultar sessões, trechos praticados, BPM confortável e revisões pendentes |
+| Partitura  | Ler, escrever, destacar, inserir dedilhados, marcar dificuldades e abrir o modo de prática               |
+| Aulas      | Guardar gravações, mensagens, anexos, notas e orientações; ouvir e consultar a transcrição               |
+| Evolução   | Consultar sessões, trechos praticados, BPM confortável e revisões pendentes                              |
 
 Cada peça reúne suas partituras, aulas relacionadas, observações e histórico. Uma peça pode ter diferentes edições ou versões de partitura. Marcar uma peça como estudada preserva tudo e permite colocá-la em revisão.
 
@@ -56,16 +56,16 @@ O modo de prática mantém o trecho visível, apresenta BPM, pulsação, repeti�
 
 Configuração proposta:
 
-| Parâmetro | Comportamento |
-|---|---|
-| Andamento | BPM com unidade explícita, por exemplo semínima ou semínima pontuada |
-| Métrica | Fórmula de compasso, agrupamento, acento e subdivisões |
-| Duração | Quantidade de compassos ou período em minutos/segundos |
-| Repetições | Quantidade definida ou repetição contínua até encerrar |
-| Preparação | Contagem inicial opcional, configurável antes de cada repetição |
-| Intervalo | Pausa entre repetições, sem contar como prática ativa |
-| Progressão | Aumento opcional de BPM a cada N repetições, limitado ao alvo |
-| Registro | Tempo efetivamente praticado, parâmetros usados e autoavaliação |
+| Parâmetro  | Comportamento                                                        |
+| ---------- | -------------------------------------------------------------------- |
+| Andamento  | BPM com unidade explícita, por exemplo semínima ou semínima pontuada |
+| Métrica    | Fórmula de compasso, agrupamento, acento e subdivisões               |
+| Duração    | Quantidade de compassos ou período em minutos/segundos               |
+| Repetições | Quantidade definida ou repetição contínua até encerrar               |
+| Preparação | Contagem inicial opcional, configurável antes de cada repetição      |
+| Intervalo  | Pausa entre repetições, sem contar como prática ativa                |
+| Progressão | Aumento opcional de BPM a cada N repetições, limitado ao alvo        |
+| Registro   | Tempo efetivamente praticado, parâmetros usados e autoavaliação      |
 
 Os modos de duração são mutuamente exclusivos. No modo por tempo, a duração é exata e pode terminar no meio de um compasso; a interface informa isso. No modo por compassos, o fim respeita a estrutura musical. Na primeira versão, uma configuração tem métrica fixa; para mudanças de fórmula de compasso, criar trechos separados.
 
@@ -126,19 +126,19 @@ flowchart TB
     WORKER --> DB
 ```
 
-| Camada | Escolha proposta | Motivo |
-|---|---|---|
-| Interface | React + TypeScript + Vite | Aplicação interativa, com regras e componentes compartilhados |
-| Instalação/offline | Manifesto PWA e service worker | Abrir como aplicativo e carregar os recursos previamente baixados |
-| Dados locais | IndexedDB com Dexie | Transações locais, anotações e operações pendentes |
-| Partituras | PDF.js + camada vetorial própria | Separar documento original das marcações editáveis |
-| Áudio | Web Audio API | Agendamento dos cliques independente da renderização da interface |
-| API | Node.js + TypeScript + Fastify, REST/OpenAPI | Contratos explícitos e módulos por capacidade do produto |
-| Dados remotos | PostgreSQL gerenciado no Supabase | Relações, transações, histórico e políticas de acesso |
-| Login/arquivos | Supabase Auth e Storage privado | Reduzir o trabalho inicial de infraestrutura |
-| Tarefas demoradas | Worker Node.js e fila persistente em PostgreSQL | Retentativas, controle de custos e isolamento de processamento |
-| IA | Adaptadores para transcrição e geração | Trocar modelo/provedor sem alterar o domínio |
-| Verificação | Vitest, Playwright e testes no iPad físico | Cobrir lógica, fluxos e limitações reais do dispositivo |
+| Camada             | Escolha proposta                                | Motivo                                                            |
+| ------------------ | ----------------------------------------------- | ----------------------------------------------------------------- |
+| Interface          | React + TypeScript + Vite                       | Aplicação interativa, com regras e componentes compartilhados     |
+| Instalação/offline | Manifesto PWA e service worker                  | Abrir como aplicativo e carregar os recursos previamente baixados |
+| Dados locais       | IndexedDB com Dexie                             | Transações locais, anotações e operações pendentes                |
+| Partituras         | PDF.js + camada vetorial própria                | Separar documento original das marcações editáveis                |
+| Áudio              | Web Audio API                                   | Agendamento dos cliques independente da renderização da interface |
+| API                | Node.js + TypeScript + Fastify, REST/OpenAPI    | Contratos explícitos e módulos por capacidade do produto          |
+| Dados remotos      | PostgreSQL gerenciado no Supabase               | Relações, transações, histórico e políticas de acesso             |
+| Login/arquivos     | Supabase Auth e Storage privado                 | Reduzir o trabalho inicial de infraestrutura                      |
+| Tarefas demoradas  | Worker Node.js e fila persistente em PostgreSQL | Retentativas, controle de custos e isolamento de processamento    |
+| IA                 | Adaptadores para transcrição e geração          | Trocar modelo/provedor sem alterar o domínio                      |
+| Verificação        | Vitest, Playwright e testes no iPad físico      | Cobrir lógica, fluxos e limitações reais do dispositivo           |
 
 Essas são escolhas propostas, não dependências já instaladas. Versões e licenças serão verificadas e fixadas na implementação.
 
@@ -161,22 +161,22 @@ packages/adapters         persistência, áudio e provedores de IA
 
 ## Modelo de dados
 
-| Entidade | Responsabilidade e relações |
-|---|---|
-| Piece | Obra, compositor, etiquetas e estado no repertório |
-| ScoreVersion | Edição/versão imutável da partitura; pertence a uma peça |
-| Asset | Arquivo privado, checksum, tipo, tamanho e estado de upload |
-| Annotation | Marca ou texto vinculado à versão e à página |
-| PracticeSegment | Trecho com uma ou várias regiões da partitura e dificuldade |
-| PracticePreset | BPM, unidade, métrica, duração, repetições e pausas |
-| PracticeSession | Execução de uma configuração, com parâmetros congelados e resultados |
-| Lesson | Aula, data, professor e peças relacionadas |
-| LessonRecording | Gravação da aula e seu arquivo |
-| TranscriptSegment | Texto, posição temporal e falante de uma gravação |
-| Note | Observação manual ou importada; origem e vínculos opcionais |
-| StudyTask | Ação a praticar, prioridade, prazo e vínculo com aula/trecho |
-| AIProposal | Sugestão revisável e referências para suas evidências |
-| SyncOperation | Operação idempotente enviada por um dispositivo |
+| Entidade          | Responsabilidade e relações                                          |
+| ----------------- | -------------------------------------------------------------------- |
+| Piece             | Obra, compositor, etiquetas e estado no repertório                   |
+| ScoreVersion      | Edição/versão imutável da partitura; pertence a uma peça             |
+| Asset             | Arquivo privado, checksum, tipo, tamanho e estado de upload          |
+| Annotation        | Marca ou texto vinculado à versão e à página                         |
+| PracticeSegment   | Trecho com uma ou várias regiões da partitura e dificuldade          |
+| PracticePreset    | BPM, unidade, métrica, duração, repetições e pausas                  |
+| PracticeSession   | Execução de uma configuração, com parâmetros congelados e resultados |
+| Lesson            | Aula, data, professor e peças relacionadas                           |
+| LessonRecording   | Gravação da aula e seu arquivo                                       |
+| TranscriptSegment | Texto, posição temporal e falante de uma gravação                    |
+| Note              | Observação manual ou importada; origem e vínculos opcionais          |
+| StudyTask         | Ação a praticar, prioridade, prazo e vínculo com aula/trecho         |
+| AIProposal        | Sugestão revisável e referências para suas evidências                |
+| SyncOperation     | Operação idempotente enviada por um dispositivo                      |
 
 Registros pertencem a um usuário e usam identificadores geráveis offline, datas UTC, versão para concorrência e marca de exclusão quando necessário. Uma sessão mantém uma cópia de seus parâmetros: mudar o preset depois não altera o histórico.
 
@@ -212,13 +212,13 @@ Safari no iPad e navegadores de computador serão alvos explícitos de teste. Em
 
 ## Entregas e critérios de aceite
 
-| Etapa | Entrega | Condição para avançar |
-|---|---|---|
-| 0 — Validação no dispositivo | Prova de leitura, caneta, áudio, persistência e captura | Executar no iPad real e definir a matriz de suporte |
-| 1 — Acervo | Login, repertório, PDFs, anotações, trechos, notas do professor e sincronização | Anotar offline e reencontrar as marcações no computador sem perder dados |
-| 2 — Prática | Metrônomo, ciclos, preparação, pausas, presets e histórico | Conferir contagem/duração e interrupção segura durante navegação e renderização |
-| 3 — Aulas | Gravação/importação, player, transcrição, propostas da IA e tarefas | Abrir a evidência de cada orientação e recuperar falhas sem duplicar resultados |
-| 4 — Aprimoramento | Revisões, planos de estudo, exportação completa e refinamentos | Verificar o fluxo diário completo e a restauração de dados |
+| Etapa                        | Entrega                                                                         | Condição para avançar                                                           |
+| ---------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| 0 — Validação no dispositivo | Prova de leitura, caneta, áudio, persistência e captura                         | Executar no iPad real e definir a matriz de suporte                             |
+| 1 — Acervo                   | Login, repertório, PDFs, anotações, trechos, notas do professor e sincronização | Anotar offline e reencontrar as marcações no computador sem perder dados        |
+| 2 — Prática                  | Metrônomo, ciclos, preparação, pausas, presets e histórico                      | Conferir contagem/duração e interrupção segura durante navegação e renderização |
+| 3 — Aulas                    | Gravação/importação, player, transcrição, propostas da IA e tarefas             | Abrir a evidência de cada orientação e recuperar falhas sem duplicar resultados |
+| 4 — Aprimoramento            | Revisões, planos de estudo, exportação completa e refinamentos                  | Verificar o fluxo diário completo e a restauração de dados                      |
 
 As etapas 1 a 3 compõem a primeira versão funcional do escopo solicitado. Exportação básica e recuperação de gravação acompanham suas respectivas funcionalidades; a etapa 4 amplia essas capacidades.
 

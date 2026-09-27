@@ -1,0 +1,6 @@
+dist
+node_modules
+public/pdfjs
+.runtime
+package-lock.json
+tests/fixtures

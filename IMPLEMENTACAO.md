@@ -33,22 +33,22 @@ Foi entregue o Compasso 0.1, uma aplicação funcional local, não apenas uma ma
 
 ## Disponível
 
-| Área | Entrega |
-| --- | --- |
-| Repertório | Cadastro, edição, exclusão, busca, etiquetas e três estados de estudo |
-| Partituras | PDF/imagem local, versões preservadas, paginação, zoom e exportação de PDF anotado |
-| Marcações | Caneta, marca-texto, texto com tamanho ajustável, seleção e movimentação, apagar, desfazer/refazer e visibilidade por camada |
-| Trechos | Seleção retangular, compassos informados pelo usuário, mão, objetivo, dificuldade, BPM e data de revisão |
-| Prática | Foco visual no trecho, metrônomo, compassos/subdivisões, repetição por segundos ou compassos, preparação, descanso, progressão de BPM e compassos silenciosos |
-| Rotinas | Lista ordenada de trechos com minutos, reordenação e preparação manual de cada passo |
-| Histórico | Tempo ativo sem descansos/preparação, repetições concluídas, percepção e observação; sessão parcial salva periodicamente |
-| Aulas | Registro, áudio importado, gravação via microfone, reprodução nativa com velocidade e notas com tempo |
-| IA | Endpoints reais de transcrição e resumo, propostas com evidência e aceitação humana; ativação depende de chave e autenticação |
-| Recuperação | Blocos de gravação a cada 3 segundos em IndexedDB e recuperação de captura interrompida |
-| Evolução | Sessões, revisões por trecho, gravações de execução e exportação de pauta para próxima aula |
-| Dados | Backup/restauração validada e transacional com mídias; solicitação de persistência e estimativa de armazenamento |
-| Nuvem | Código e SQL para backups manuais privados em Supabase, com login de conta existente |
-| Instalação | Manifesto, ícones, fontes locais e cache offline; servidor Node de produção e Dockerfile |
+| Área        | Entrega                                                                                                                                                       |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Repertório  | Cadastro, edição, exclusão, busca, etiquetas e três estados de estudo                                                                                         |
+| Partituras  | PDF/imagem local, versões preservadas, paginação, zoom e exportação de PDF anotado                                                                            |
+| Marcações   | Caneta, marca-texto, texto com tamanho ajustável, seleção e movimentação, apagar, desfazer/refazer e visibilidade por camada                                  |
+| Trechos     | Seleção retangular, compassos informados pelo usuário, mão, objetivo, dificuldade, BPM e data de revisão                                                      |
+| Prática     | Foco visual no trecho, metrônomo, compassos/subdivisões, repetição por segundos ou compassos, preparação, descanso, progressão de BPM e compassos silenciosos |
+| Rotinas     | Lista ordenada de trechos com minutos, reordenação e preparação manual de cada passo                                                                          |
+| Histórico   | Tempo ativo sem descansos/preparação, repetições concluídas, percepção e observação; sessão parcial salva periodicamente                                      |
+| Aulas       | Registro, áudio importado, gravação via microfone, reprodução nativa com velocidade e notas com tempo                                                         |
+| IA          | Endpoints reais de transcrição e resumo, propostas com evidência e aceitação humana; ativação depende de chave e autenticação                                 |
+| Recuperação | Blocos de gravação a cada 3 segundos em IndexedDB e recuperação de captura interrompida                                                                       |
+| Evolução    | Sessões, revisões por trecho, gravações de execução e exportação de pauta para próxima aula                                                                   |
+| Dados       | Backup/restauração validada e transacional com mídias; solicitação de persistência e estimativa de armazenamento                                              |
+| Nuvem       | Código e SQL para backups manuais privados em Supabase, com login de conta existente                                                                          |
+| Instalação  | Manifesto, ícones, fontes locais e cache offline; servidor Node de produção e Dockerfile                                                                      |
 
 ## Validação realizada
 

@@ -104,15 +104,15 @@ São 34 testes cobrindo contagem de prática, agendamento de áudio com relógio
 
 Os comandos `npm run dev` e `npm run build` preparam automaticamente os recursos auxiliares do PDF.js em `public/pdfjs/<versão>`. Eles incluem decodificadores de imagens digitalizadas (JPEG2000/JBIG2), fontes e perfis de cor. Preserve essa pasta no pacote publicado: sem esses recursos, certos PDFs podem ficar em branco. O build de produção inclui esses arquivos no cache offline.
 
-| Pasta/arquivo | Responsabilidade |
-| --- | --- |
-| `src/domain.ts`, `src/db.ts` | Tipos, validações e banco local versionado |
-| `src/components` | Telas e fluxos da aplicação |
-| `src/practice` | Linha do tempo e metrônomo Web Audio |
-| `src/backup.ts`, `src/score-export.ts` | Portabilidade dos dados e exportação de PDF |
-| `server` | API de IA autenticada e servidor de produção |
-| `supabase/migrations` | Estrutura opcional de backups privados |
-| `scripts/service-worker.mjs` | Cache offline gerado a partir do build |
-| `tests` | Testes automatizados e arquivos sintéticos de teste |
+| Pasta/arquivo                          | Responsabilidade                                    |
+| -------------------------------------- | --------------------------------------------------- |
+| `src/domain.ts`, `src/db.ts`           | Tipos, validações e banco local versionado          |
+| `src/components`                       | Telas e fluxos da aplicação                         |
+| `src/practice`                         | Linha do tempo e metrônomo Web Audio                |
+| `src/backup.ts`, `src/score-export.ts` | Portabilidade dos dados e exportação de PDF         |
+| `server`                               | API de IA autenticada e servidor de produção        |
+| `supabase/migrations`                  | Estrutura opcional de backups privados              |
+| `scripts/service-worker.mjs`           | Cache offline gerado a partir do build              |
+| `tests`                                | Testes automatizados e arquivos sintéticos de teste |
 
 Veja [IMPLEMENTACAO.md](./IMPLEMENTACAO.md) para resultados e limitações, [ARQUITETURA.md](./ARQUITETURA.md) para a visão de longo prazo, [PESQUISA_APPS.md](./PESQUISA_APPS.md) para referências e [HANDOFF_CLAUDE.md](./HANDOFF_CLAUDE.md) para continuidade por outro assistente.

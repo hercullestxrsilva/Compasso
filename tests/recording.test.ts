@@ -11,10 +11,15 @@ describe('recording playback', () => {
   it('writes a finite stereo WAV without cancelling one channel', async () => {
     const left = new Float32Array([0, 1, -1, 0]);
     const right = new Float32Array([0, 0, 0, 0]);
-    const audio = { length: 4, numberOfChannels: 2, sampleRate: 8000, getChannelData: (i: number) => i ? right : left } as AudioBuffer;
+    const audio = {
+      length: 4,
+      numberOfChannels: 2,
+      sampleRate: 8000,
+      getChannelData: (i: number) => (i ? right : left),
+    } as AudioBuffer;
     const result = encodeWav(audio);
     const view = new DataView(await result.blob.arrayBuffer());
-    expect(result.duration).toBe(.0005);
+    expect(result.duration).toBe(0.0005);
     expect(result.peak).toBe(1);
     expect(view.getUint32(4, true)).toBe(52);
     expect(view.getUint16(22, true)).toBe(2);
@@ -26,8 +31,8 @@ describe('recording playback', () => {
 
   it('distinguishes silence from a live microphone signal', () => {
     expect(audioLevel(new Float32Array([0, 0, 0]))).toBe(0);
-    expect(audioLevel(new Float32Array([.5, -.5]))).toBe(.5);
+    expect(audioLevel(new Float32Array([0.5, -0.5]))).toBe(0.5);
     expect(recordingHealthMessage(120, 0)).toContain('não contém sinal audível');
-    expect(recordingHealthMessage(120, .05)).toBe('');
+    expect(recordingHealthMessage(120, 0.05)).toBe('');
   });
 });

@@ -1,63 +1,627 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Plus, ArrowLeft, Headphones, FileAudio, Sparkles, BookmarkPlus, Trash2, Check, Download, RotateCcw } from 'lucide-react';
+import {
+  Plus,
+  ArrowLeft,
+  Headphones,
+  FileAudio,
+  Sparkles,
+  BookmarkPlus,
+  Trash2,
+  Check,
+  Download,
+  RotateCcw,
+} from 'lucide-react';
 import { db, storeAsset } from '../db';
 import { uid, now, localDay, formatDate, clock, type Lesson } from '../domain';
 import { Field, Modal, Empty, ErrorBox, Badge, download, errorText } from './common';
 import Recorder, { recoverCapture, clearCapture } from './Recorder';
 import { aiFetch } from '../services';
-interface Proposal { summary:string; tasks:{title:string;evidence:string;timestamp:number|null}[]; questions:string[] }
-function LessonForm({ onClose,onSaved }: {onClose:()=>void;onSaved:(id:string)=>void}) {
-  const pieces=useLiveQuery(()=>db.pieces.toArray())??[];
-  const [title,setTitle]=useState(''),[date,setDate]=useState(localDay()),[teacher,setTeacher]=useState(''),[pieceId,setPieceId]=useState(''),[error,setError]=useState('');
-  return <Modal title="Registrar aula" onClose={onClose}><form onSubmit={async e=>{e.preventDefault();try{const id=uid();await db.lessons.add({id,title:title.trim(),date,teacher,pieceId,transcript:'',summary:'',createdAt:now()});onSaved(id);onClose();}catch(err){setError(errorText(err));}}}><Field label="Título"><input autoFocus required value={title} maxLength={160} onChange={e=>setTitle(e.target.value)} placeholder="Ex.: Aula de interpretação"/></Field><div className="form-grid"><Field label="Data"><input type="date" required value={date} onChange={e=>setDate(e.target.value)}/></Field><Field label="Professor(a)"><input value={teacher} maxLength={120} onChange={e=>setTeacher(e.target.value)}/></Field></div><Field label="Peça relacionada"><select value={pieceId} onChange={e=>setPieceId(e.target.value)}><option value="">Aula geral</option>{pieces.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select></Field><ErrorBox message={error}/><footer className="modal-actions"><button className="btn" disabled={!title.trim()}>Criar aula</button></footer></form></Modal>;
+interface Proposal {
+  summary: string;
+  tasks: { title: string; evidence: string; timestamp: number | null }[];
+  questions: string[];
 }
-export default function Lessons({notify}:{notify:(s:string)=>void}) {
-  const lessons=useLiveQuery(()=>db.lessons.orderBy('date').reverse().toArray())??[];
-  const [form,setForm]=useState(false),[selected,setSelected]=useState('');
-  const lesson=lessons.find(l=>l.id===selected);
-  return lesson?<LessonDetail key={lesson.id} lesson={lesson} onBack={()=>setSelected('')} notify={notify}/>:<><div className="page-heading"><div><span className="eyebrow">APRENDA. ESCUTE. REVISITE.</span><h1>Suas aulas</h1><p>Guarde as orientações que fazem diferença no seu estudo.</p></div><button className="btn" onClick={()=>setForm(true)}><Plus size={18}/>Registrar aula</button></div>{lessons.length?<div className="lesson-list">{lessons.map(l=><button className="lesson-item" key={l.id} onClick={()=>setSelected(l.id)}><div className="lesson-date"><strong>{new Date(`${l.date}T12:00:00`).getDate()}</strong><span>{new Date(`${l.date}T12:00:00`).toLocaleDateString('pt-BR',{month:'short'})}</span></div><div className="grow"><h3>{l.title}</h3><p>{l.teacher||'Meu caderno de aulas'} · {l.assetId?'Com gravação':'Notas e orientações'}</p></div><Headphones size={24}/><span className="lesson-open">Abrir aula →</span></button>)}</div>:<Empty title="Cada aula, uma nova descoberta" text="Registre uma aula para guardar o áudio, suas anotações e as orientações do professor." action={<button className="btn" onClick={()=>setForm(true)}><Plus size={18}/>Registrar primeira aula</button>}/>}{form&&<LessonForm onClose={()=>setForm(false)} onSaved={id=>setSelected(id)}/>}</>;
+function LessonForm({ onClose, onSaved }: { onClose: () => void; onSaved: (id: string) => void }) {
+  const pieces = useLiveQuery(() => db.pieces.toArray()) ?? [];
+  const [title, setTitle] = useState(''),
+    [date, setDate] = useState(localDay()),
+    [teacher, setTeacher] = useState(''),
+    [pieceId, setPieceId] = useState(''),
+    [error, setError] = useState('');
+  return (
+    <Modal title="Registrar aula" onClose={onClose}>
+      <form
+        onSubmit={async e => {
+          e.preventDefault();
+          try {
+            const id = uid();
+            await db.lessons.add({
+              id,
+              title: title.trim(),
+              date,
+              teacher,
+              pieceId,
+              transcript: '',
+              summary: '',
+              createdAt: now(),
+            });
+            onSaved(id);
+            onClose();
+          } catch (err) {
+            setError(errorText(err));
+          }
+        }}
+      >
+        <Field label="Título">
+          <input
+            autoFocus
+            required
+            value={title}
+            maxLength={160}
+            onChange={e => setTitle(e.target.value)}
+            placeholder="Ex.: Aula de interpretação"
+          />
+        </Field>
+        <div className="form-grid">
+          <Field label="Data">
+            <input type="date" required value={date} onChange={e => setDate(e.target.value)} />
+          </Field>
+          <Field label="Professor(a)">
+            <input value={teacher} maxLength={120} onChange={e => setTeacher(e.target.value)} />
+          </Field>
+        </div>
+        <Field label="Peça relacionada">
+          <select value={pieceId} onChange={e => setPieceId(e.target.value)}>
+            <option value="">Aula geral</option>
+            {pieces.map(p => (
+              <option key={p.id} value={p.id}>
+                {p.title}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <ErrorBox message={error} />
+        <footer className="modal-actions">
+          <button className="btn" disabled={!title.trim()}>
+            Criar aula
+          </button>
+        </footer>
+      </form>
+    </Modal>
+  );
 }
-function LessonDetail({lesson,onBack,notify}:{lesson:Lesson;onBack:()=>void;notify:(s:string)=>void}) {
-  const asset=useLiveQuery(()=>lesson.assetId?db.assets.get(lesson.assetId):undefined,[lesson.assetId]);
-  const notes=useLiveQuery(()=>db.notes.where('lessonId').equals(lesson.id).toArray(),[lesson.id])??[];
-  const captures=useLiveQuery(()=>db.captures.toArray())??[];
-  const [capturing,setCapturing]=useState(false);
-  const [url,setUrl]=useState(''),[note,setNote]=useState(''),[time,setTime]=useState(0),[speed,setSpeed]=useState(1),[transcript,setTranscript]=useState(lesson.transcript);
-  const [tab,setTab]=useState('notes'),[busy,setBusy]=useState(''),[error,setError]=useState(''),[proposal,setProposal]=useState<Proposal>(),[accepted,setAccepted]=useState<number[]>([]);
-  const audio=useRef<HTMLAudioElement>(null);
-  useEffect(()=>{if(!asset){setUrl('');return;}const u=URL.createObjectURL(asset.blob);setUrl(u);return()=>URL.revokeObjectURL(u);},[asset]);
-  useEffect(()=>{setTranscript(lesson.transcript);},[lesson.transcript]);
-  const attach=async(file:File)=>{
-    if(!file.type.startsWith('audio/')&&!/\.(mp3|m4a|wav|webm|ogg|mp4)$/i.test(file.name))throw new Error('Escolha um arquivo de áudio.');
-    if(lesson.assetId&&!window.confirm('Substituir o áudio desta aula? As anotações e seus tempos atuais serão preservados.'))throw new Error('Substituição cancelada.');
-    await db.transaction('rw',[db.assets,db.lessons],async()=>{const a=await storeAsset(file);await db.lessons.update(lesson.id,{assetId:a.id});if(lesson.assetId)await db.assets.delete(lesson.assetId);});notify('Áudio salvo neste dispositivo.');
+export default function Lessons({ notify }: { notify: (s: string) => void }) {
+  const lessons = useLiveQuery(() => db.lessons.orderBy('date').reverse().toArray()) ?? [];
+  const [form, setForm] = useState(false),
+    [selected, setSelected] = useState('');
+  const lesson = lessons.find(l => l.id === selected);
+  return lesson ? (
+    <LessonDetail key={lesson.id} lesson={lesson} onBack={() => setSelected('')} notify={notify} />
+  ) : (
+    <>
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">APRENDA. ESCUTE. REVISITE.</span>
+          <h1>Suas aulas</h1>
+          <p>Guarde as orientações que fazem diferença no seu estudo.</p>
+        </div>
+        <button className="btn" onClick={() => setForm(true)}>
+          <Plus size={18} />
+          Registrar aula
+        </button>
+      </div>
+      {lessons.length ? (
+        <div className="lesson-list">
+          {lessons.map(l => (
+            <button className="lesson-item" key={l.id} onClick={() => setSelected(l.id)}>
+              <div className="lesson-date">
+                <strong>{new Date(`${l.date}T12:00:00`).getDate()}</strong>
+                <span>{new Date(`${l.date}T12:00:00`).toLocaleDateString('pt-BR', { month: 'short' })}</span>
+              </div>
+              <div className="grow">
+                <h3>{l.title}</h3>
+                <p>
+                  {l.teacher || 'Meu caderno de aulas'} · {l.assetId ? 'Com gravação' : 'Notas e orientações'}
+                </p>
+              </div>
+              <Headphones size={24} />
+              <span className="lesson-open">Abrir aula →</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <Empty
+          title="Cada aula, uma nova descoberta"
+          text="Registre uma aula para guardar o áudio, suas anotações e as orientações do professor."
+          action={
+            <button className="btn" onClick={() => setForm(true)}>
+              <Plus size={18} />
+              Registrar primeira aula
+            </button>
+          }
+        />
+      )}
+      {form && <LessonForm onClose={() => setForm(false)} onSaved={id => setSelected(id)} />}
+    </>
+  );
+}
+function LessonDetail({
+  lesson,
+  onBack,
+  notify,
+}: {
+  lesson: Lesson;
+  onBack: () => void;
+  notify: (s: string) => void;
+}) {
+  const asset = useLiveQuery(
+    () => (lesson.assetId ? db.assets.get(lesson.assetId) : undefined),
+    [lesson.assetId],
+  );
+  const notes = useLiveQuery(() => db.notes.where('lessonId').equals(lesson.id).toArray(), [lesson.id]) ?? [];
+  const captures = useLiveQuery(() => db.captures.toArray()) ?? [];
+  const [capturing, setCapturing] = useState(false);
+  const [url, setUrl] = useState(''),
+    [note, setNote] = useState(''),
+    [time, setTime] = useState(0),
+    [speed, setSpeed] = useState(1),
+    [transcript, setTranscript] = useState(lesson.transcript);
+  const [tab, setTab] = useState('notes'),
+    [busy, setBusy] = useState(''),
+    [error, setError] = useState(''),
+    [proposal, setProposal] = useState<Proposal>(),
+    [accepted, setAccepted] = useState<number[]>([]);
+  const audio = useRef<HTMLAudioElement>(null);
+  useEffect(() => {
+    if (!asset) {
+      setUrl('');
+      return;
+    }
+    const u = URL.createObjectURL(asset.blob);
+    setUrl(u);
+    return () => URL.revokeObjectURL(u);
+  }, [asset]);
+  useEffect(() => {
+    setTranscript(lesson.transcript);
+  }, [lesson.transcript]);
+  const attach = async (file: File) => {
+    if (!file.type.startsWith('audio/') && !/\.(mp3|m4a|wav|webm|ogg|mp4)$/i.test(file.name))
+      throw new Error('Escolha um arquivo de áudio.');
+    if (
+      lesson.assetId &&
+      !window.confirm('Substituir o áudio desta aula? As anotações e seus tempos atuais serão preservados.')
+    )
+      throw new Error('Substituição cancelada.');
+    await db.transaction('rw', [db.assets, db.lessons], async () => {
+      const a = await storeAsset(file);
+      await db.lessons.update(lesson.id, { assetId: a.id });
+      if (lesson.assetId) await db.assets.delete(lesson.assetId);
+    });
+    notify('Áudio salvo neste dispositivo.');
   };
-  const generate=async(action:'transcribe'|'summarize')=>{
-    setError('');setBusy(action);
+  const generate = async (action: 'transcribe' | 'summarize') => {
+    setError('');
+    setBusy(action);
     try {
-      if(action==='transcribe') {
-        if(!asset)throw new Error('Adicione uma gravação primeiro.');
-        if(asset.size>24*1024*1024)throw new Error('A transcrição desta versão aceita áudios de até 24 MB. Importe um trecho menor ou cole a transcrição.');
-        const form=new FormData();form.append('audio',asset.blob,asset.name);
-        const data=await aiFetch('/api/transcribe',{method:'POST',body:form});
-        const text=data.segments?.length?data.segments.map((s:{start:number;text:string})=>`[${clock(s.start)}] ${s.text}`).join('\n'):data.text;
-        await db.lessons.update(lesson.id,{transcript:text});setTranscript(text);setTab('transcript');notify('Transcrição salva. Revise os trechos ambíguos.');
+      if (action === 'transcribe') {
+        if (!asset) throw new Error('Adicione uma gravação primeiro.');
+        if (asset.size > 24 * 1024 * 1024)
+          throw new Error(
+            'A transcrição desta versão aceita áudios de até 24 MB. Importe um trecho menor ou cole a transcrição.',
+          );
+        const form = new FormData();
+        form.append('audio', asset.blob, asset.name);
+        const data = await aiFetch('/api/transcribe', { method: 'POST', body: form });
+        const text = data.segments?.length
+          ? data.segments
+              .map((s: { start: number; text: string }) => `[${clock(s.start)}] ${s.text}`)
+              .join('\n')
+          : data.text;
+        await db.lessons.update(lesson.id, { transcript: text });
+        setTranscript(text);
+        setTab('transcript');
+        notify('Transcrição salva. Revise os trechos ambíguos.');
       } else {
-        if(!transcript.trim())throw new Error('Adicione ou cole a transcrição antes de pedir sugestões.');
-        await db.lessons.update(lesson.id,{transcript});
-        const data=await aiFetch('/api/summarize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({transcript,title:lesson.title})});setProposal(data);setAccepted([]);setTab('ai');
+        if (!transcript.trim()) throw new Error('Adicione ou cole a transcrição antes de pedir sugestões.');
+        await db.lessons.update(lesson.id, { transcript });
+        const data = await aiFetch('/api/summarize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transcript, title: lesson.title }),
+        });
+        setProposal(data);
+        setAccepted([]);
+        setTab('ai');
       }
-    }catch(err){setError(errorText(err));}finally{setBusy('');}
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy('');
+    }
   };
-  return <><button className="back-link" onClick={onBack}><ArrowLeft size={17}/>Todas as aulas</button><div className="page-heading compact"><div><span className="eyebrow">{formatDate(lesson.date)} · {lesson.teacher||'CADERNO DE AULAS'}</span><h1>{lesson.title}</h1><p>Ouça de novo. Anote o que importa.</p></div><button className="icon-btn" aria-label="Excluir aula" onClick={async()=>{if(!window.confirm('Excluir a aula, o áudio e suas notas? As tarefas criadas a partir dela serão preservadas.'))return;try{await db.transaction('rw',[db.lessons,db.assets,db.notes,db.tasks],async()=>{await db.lessons.delete(lesson.id);if(lesson.assetId)await db.assets.delete(lesson.assetId);await db.notes.where('lessonId').equals(lesson.id).delete();await db.tasks.where('lessonId').equals(lesson.id).modify({lessonId:undefined});});onBack();}catch(err){notify(errorText(err));}}}><Trash2 size={18}/></button></div>
-  <div className="lesson-workspace"><section className="panel audio-panel"><div className="audio-art"><Headphones size={58} strokeWidth={1}/><h2>A aula continua aqui.</h2><p>{asset?.name??'Adicione uma gravação para ouvir e marcar momentos.'}</p></div>{url&&<><audio ref={audio} src={url} controls preload="metadata" onTimeUpdate={e=>setTime(e.currentTarget.currentTime)} onLoadedMetadata={e=>{e.currentTarget.playbackRate=speed;}}/><div className="row between"><Field label="Velocidade"><select value={speed} onChange={e=>{const v=Number(e.target.value);setSpeed(v);if(audio.current)audio.current.playbackRate=v;}}>{[.75,1,1.25,1.5,2].map(v=><option key={v} value={v}>{v}×</option>)}</select></Field><button className="btn small secondary" onClick={()=>asset&&download(asset.blob,asset.name)}><Download size={16}/>Baixar áudio</button></div></>}
-  <div className="row wrap"><label className="btn secondary file-button"><FileAudio size={17}/>Importar áudio<input type="file" accept="audio/*,.m4a,.mp3,.wav,.webm,.ogg" onChange={async e=>{const f=e.target.files?.[0];if(f)try{await attach(f);}catch(err){notify(errorText(err));}e.target.value='';}}/></label><Recorder onFile={attach} onBusyChange={setCapturing}/></div>
-  <p className="hint">Áudio e notas ficam neste dispositivo. Exporte um backup para guardar uma cópia.</p>
-  {!capturing&&captures.length>0&&<div className="recovery"><h3>Gravações recuperáveis</h3><p className="hint">Blocos salvos durante a captura. Uma gravação interrompida pode estar incompleta.</p>{captures.map(c=><div className="row wrap" key={c.id}><span>{c.title}</span><button className="btn small secondary" onClick={async()=>{try{const f=await recoverCapture(c.id);await attach(f);await clearCapture(c.id);}catch(err){notify(errorText(err));}}}><RotateCcw size={14}/>Recuperar</button><button className="icon-btn" aria-label="Excluir gravação recuperável" onClick={async()=>{if(window.confirm('Excluir os blocos desta gravação?'))try{await clearCapture(c.id);}catch(err){notify(errorText(err));}}}><Trash2 size={14}/></button></div>)}</div>}
-  </section><section className="panel lesson-notes"><div className="tabs">{[['notes','Anotações'],['transcript','Transcrição'],['ai','Assistente']].map(([k,v])=><button key={k} className={tab===k?'active':''} onClick={()=>setTab(k)}>{v}</button>)}</div><ErrorBox message={error}/>
-  {tab==='notes'&&<><form className="note-form" onSubmit={async e=>{e.preventDefault();if(!note.trim())return;try{await db.notes.add({id:uid(),lessonId:lesson.id,pieceId:lesson.pieceId||undefined,text:note.trim(),source:'mine',timestamp:asset?time:undefined,createdAt:now()});setNote('');}catch(err){notify(errorText(err));}}}><Field label={asset?`Anotar em ${clock(time)}`:'Nova anotação'}><textarea value={note} maxLength={5000} onChange={e=>setNote(e.target.value)} rows={4} placeholder="Uma orientação, um detalhe, uma dúvida…"/></Field><button className="btn small" disabled={!note.trim()}><BookmarkPlus size={16}/>Salvar anotação</button></form>{notes.sort((a,b)=>(a.timestamp??0)-(b.timestamp??0)).map(n=><article className="lesson-note" key={n.id}><div className="row between">{n.timestamp!==undefined?<button className="timestamp" onClick={()=>{if(audio.current)audio.current.currentTime=n.timestamp!;}}>{clock(n.timestamp)}</button>:<Badge>Nota</Badge>}<button className="icon-btn subtle" aria-label="Excluir nota" onClick={async()=>{if(window.confirm('Excluir esta anotação?'))try{await db.notes.delete(n.id);}catch(err){notify(errorText(err));}}}><Trash2 size={14}/></button></div><p>{n.text}</p></article>)}</>}
-  {tab==='transcript'&&<><h2>Revisite o que foi dito</h2><p className="hint">Cole uma transcrição ou use o serviço de IA configurado. Corrija palavras e nomes quando necessário.</p><textarea className="transcript-editor" aria-label="Transcrição da aula" value={transcript} onChange={e=>setTranscript(e.target.value)} maxLength={100000} placeholder="[0:00] Comece pela mão esquerda…"/><div className="row wrap"><button className="btn" onClick={async()=>{try{await db.lessons.update(lesson.id,{transcript});notify('Transcrição salva.');}catch(err){notify(errorText(err));}}}>Salvar texto</button><button className="btn secondary" disabled={!!busy||!asset} onClick={()=>void generate('transcribe')}><Sparkles size={16}/>{busy==='transcribe'?'Transcrevendo…':'Transcrever áudio com IA'}</button></div></>}
-  {tab==='ai'&&<><div className="ai-intro"><Sparkles size={26}/><h2>Da conversa para o estudo</h2><p>Receba um resumo e sugestões de tarefas a partir da transcrição. Revise cada proposta antes de adicioná-la ao seu plano.</p></div><button className="btn" disabled={!!busy||!transcript.trim()} onClick={()=>void generate('summarize')}><Sparkles size={17}/>{busy==='summarize'?'Preparando sugestões…':'Analisar transcrição'}</button><p className="hint">Requer serviço de IA configurado e conexão. Nenhum resultado é gerado sem esse serviço.</p>{(proposal?.summary||lesson.summary)&&<article className="note-card"><h3>Resumo {proposal?'para revisão':''}</h3><p>{proposal?.summary??lesson.summary}</p>{proposal&&<button className="btn small secondary" onClick={async()=>{try{await db.lessons.update(lesson.id,{summary:proposal.summary});notify('Resumo salvo.');}catch(err){notify(errorText(err));}}}>Salvar resumo revisado</button>}</article>}{proposal?.tasks.map((t,i)=><article className="proposal-card" key={i}><Badge>Sugestão da IA</Badge><h3>{t.title}</h3><blockquote>{t.evidence}</blockquote><div className="row wrap">{t.timestamp!==null&&asset&&<button className="timestamp" onClick={()=>{if(audio.current){audio.current.currentTime=t.timestamp!;void audio.current.play().catch(()=>{});}}}>Ouvir em {clock(t.timestamp)}</button>}<button className="btn small secondary" disabled={accepted.includes(i)} onClick={async()=>{try{await db.tasks.add({id:uid(),pieceId:lesson.pieceId,lessonId:lesson.id,title:t.title,done:false,dueDate:'',createdAt:now()});setAccepted(a=>[...a,i]);notify('Tarefa adicionada ao plano.');}catch(err){notify(errorText(err));}}}><Check size={15}/>{accepted.includes(i)?'Adicionada':'Adicionar tarefa'}</button></div></article>)}{proposal?.questions.length? <article className="note-card"><h3>Para a próxima aula</h3><ul>{proposal.questions.map((q,i)=><li key={i}>{q}</li>)}</ul></article>:null}</>}
-  </section></div></>;
+  return (
+    <>
+      <button className="back-link" onClick={onBack}>
+        <ArrowLeft size={17} />
+        Todas as aulas
+      </button>
+      <div className="page-heading compact">
+        <div>
+          <span className="eyebrow">
+            {formatDate(lesson.date)} · {lesson.teacher || 'CADERNO DE AULAS'}
+          </span>
+          <h1>{lesson.title}</h1>
+          <p>Ouça de novo. Anote o que importa.</p>
+        </div>
+        <button
+          className="icon-btn"
+          aria-label="Excluir aula"
+          onClick={async () => {
+            if (
+              !window.confirm(
+                'Excluir a aula, o áudio e suas notas? As tarefas criadas a partir dela serão preservadas.',
+              )
+            )
+              return;
+            try {
+              await db.transaction('rw', [db.lessons, db.assets, db.notes, db.tasks], async () => {
+                await db.lessons.delete(lesson.id);
+                if (lesson.assetId) await db.assets.delete(lesson.assetId);
+                await db.notes.where('lessonId').equals(lesson.id).delete();
+                await db.tasks.where('lessonId').equals(lesson.id).modify({ lessonId: undefined });
+              });
+              onBack();
+            } catch (err) {
+              notify(errorText(err));
+            }
+          }}
+        >
+          <Trash2 size={18} />
+        </button>
+      </div>
+      <div className="lesson-workspace">
+        <section className="panel audio-panel">
+          <div className="audio-art">
+            <Headphones size={58} strokeWidth={1} />
+            <h2>A aula continua aqui.</h2>
+            <p>{asset?.name ?? 'Adicione uma gravação para ouvir e marcar momentos.'}</p>
+          </div>
+          {url && (
+            <>
+              <audio
+                ref={audio}
+                src={url}
+                controls
+                preload="metadata"
+                onTimeUpdate={e => setTime(e.currentTarget.currentTime)}
+                onLoadedMetadata={e => {
+                  e.currentTarget.playbackRate = speed;
+                }}
+              />
+              <div className="row between">
+                <Field label="Velocidade">
+                  <select
+                    value={speed}
+                    onChange={e => {
+                      const v = Number(e.target.value);
+                      setSpeed(v);
+                      if (audio.current) audio.current.playbackRate = v;
+                    }}
+                  >
+                    {[0.75, 1, 1.25, 1.5, 2].map(v => (
+                      <option key={v} value={v}>
+                        {v}×
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <button
+                  className="btn small secondary"
+                  onClick={() => asset && download(asset.blob, asset.name)}
+                >
+                  <Download size={16} />
+                  Baixar áudio
+                </button>
+              </div>
+            </>
+          )}
+          <div className="row wrap">
+            <label className="btn secondary file-button">
+              <FileAudio size={17} />
+              Importar áudio
+              <input
+                type="file"
+                accept="audio/*,.m4a,.mp3,.wav,.webm,.ogg"
+                onChange={async e => {
+                  const f = e.target.files?.[0];
+                  if (f)
+                    try {
+                      await attach(f);
+                    } catch (err) {
+                      notify(errorText(err));
+                    }
+                  e.target.value = '';
+                }}
+              />
+            </label>
+            <Recorder onFile={attach} onBusyChange={setCapturing} />
+          </div>
+          <p className="hint">
+            Áudio e notas ficam neste dispositivo. Exporte um backup para guardar uma cópia.
+          </p>
+          {!capturing && captures.length > 0 && (
+            <div className="recovery">
+              <h3>Gravações recuperáveis</h3>
+              <p className="hint">
+                Blocos salvos durante a captura. Uma gravação interrompida pode estar incompleta.
+              </p>
+              {captures.map(c => (
+                <div className="row wrap" key={c.id}>
+                  <span>{c.title}</span>
+                  <button
+                    className="btn small secondary"
+                    onClick={async () => {
+                      try {
+                        const f = await recoverCapture(c.id);
+                        await attach(f);
+                        await clearCapture(c.id);
+                      } catch (err) {
+                        notify(errorText(err));
+                      }
+                    }}
+                  >
+                    <RotateCcw size={14} />
+                    Recuperar
+                  </button>
+                  <button
+                    className="icon-btn"
+                    aria-label="Excluir gravação recuperável"
+                    onClick={async () => {
+                      if (window.confirm('Excluir os blocos desta gravação?'))
+                        try {
+                          await clearCapture(c.id);
+                        } catch (err) {
+                          notify(errorText(err));
+                        }
+                    }}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+        <section className="panel lesson-notes">
+          <div className="tabs">
+            {[
+              ['notes', 'Anotações'],
+              ['transcript', 'Transcrição'],
+              ['ai', 'Assistente'],
+            ].map(([k, v]) => (
+              <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>
+                {v}
+              </button>
+            ))}
+          </div>
+          <ErrorBox message={error} />
+          {tab === 'notes' && (
+            <>
+              <form
+                className="note-form"
+                onSubmit={async e => {
+                  e.preventDefault();
+                  if (!note.trim()) return;
+                  try {
+                    await db.notes.add({
+                      id: uid(),
+                      lessonId: lesson.id,
+                      pieceId: lesson.pieceId || undefined,
+                      text: note.trim(),
+                      source: 'mine',
+                      timestamp: asset ? time : undefined,
+                      createdAt: now(),
+                    });
+                    setNote('');
+                  } catch (err) {
+                    notify(errorText(err));
+                  }
+                }}
+              >
+                <Field label={asset ? `Anotar em ${clock(time)}` : 'Nova anotação'}>
+                  <textarea
+                    value={note}
+                    maxLength={5000}
+                    onChange={e => setNote(e.target.value)}
+                    rows={4}
+                    placeholder="Uma orientação, um detalhe, uma dúvida…"
+                  />
+                </Field>
+                <button className="btn small" disabled={!note.trim()}>
+                  <BookmarkPlus size={16} />
+                  Salvar anotação
+                </button>
+              </form>
+              {notes
+                .sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
+                .map(n => (
+                  <article className="lesson-note" key={n.id}>
+                    <div className="row between">
+                      {n.timestamp !== undefined ? (
+                        <button
+                          className="timestamp"
+                          onClick={() => {
+                            if (audio.current) audio.current.currentTime = n.timestamp!;
+                          }}
+                        >
+                          {clock(n.timestamp)}
+                        </button>
+                      ) : (
+                        <Badge>Nota</Badge>
+                      )}
+                      <button
+                        className="icon-btn subtle"
+                        aria-label="Excluir nota"
+                        onClick={async () => {
+                          if (window.confirm('Excluir esta anotação?'))
+                            try {
+                              await db.notes.delete(n.id);
+                            } catch (err) {
+                              notify(errorText(err));
+                            }
+                        }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                    <p>{n.text}</p>
+                  </article>
+                ))}
+            </>
+          )}
+          {tab === 'transcript' && (
+            <>
+              <h2>Revisite o que foi dito</h2>
+              <p className="hint">
+                Cole uma transcrição ou use o serviço de IA configurado. Corrija palavras e nomes quando
+                necessário.
+              </p>
+              <textarea
+                className="transcript-editor"
+                aria-label="Transcrição da aula"
+                value={transcript}
+                onChange={e => setTranscript(e.target.value)}
+                maxLength={100000}
+                placeholder="[0:00] Comece pela mão esquerda…"
+              />
+              <div className="row wrap">
+                <button
+                  className="btn"
+                  onClick={async () => {
+                    try {
+                      await db.lessons.update(lesson.id, { transcript });
+                      notify('Transcrição salva.');
+                    } catch (err) {
+                      notify(errorText(err));
+                    }
+                  }}
+                >
+                  Salvar texto
+                </button>
+                <button
+                  className="btn secondary"
+                  disabled={!!busy || !asset}
+                  onClick={() => void generate('transcribe')}
+                >
+                  <Sparkles size={16} />
+                  {busy === 'transcribe' ? 'Transcrevendo…' : 'Transcrever áudio com IA'}
+                </button>
+              </div>
+            </>
+          )}
+          {tab === 'ai' && (
+            <>
+              <div className="ai-intro">
+                <Sparkles size={26} />
+                <h2>Da conversa para o estudo</h2>
+                <p>
+                  Receba um resumo e sugestões de tarefas a partir da transcrição. Revise cada proposta antes
+                  de adicioná-la ao seu plano.
+                </p>
+              </div>
+              <button
+                className="btn"
+                disabled={!!busy || !transcript.trim()}
+                onClick={() => void generate('summarize')}
+              >
+                <Sparkles size={17} />
+                {busy === 'summarize' ? 'Preparando sugestões…' : 'Analisar transcrição'}
+              </button>
+              <p className="hint">
+                Requer serviço de IA configurado e conexão. Nenhum resultado é gerado sem esse serviço.
+              </p>
+              {(proposal?.summary || lesson.summary) && (
+                <article className="note-card">
+                  <h3>Resumo {proposal ? 'para revisão' : ''}</h3>
+                  <p>{proposal?.summary ?? lesson.summary}</p>
+                  {proposal && (
+                    <button
+                      className="btn small secondary"
+                      onClick={async () => {
+                        try {
+                          await db.lessons.update(lesson.id, { summary: proposal.summary });
+                          notify('Resumo salvo.');
+                        } catch (err) {
+                          notify(errorText(err));
+                        }
+                      }}
+                    >
+                      Salvar resumo revisado
+                    </button>
+                  )}
+                </article>
+              )}
+              {proposal?.tasks.map((t, i) => (
+                <article className="proposal-card" key={i}>
+                  <Badge>Sugestão da IA</Badge>
+                  <h3>{t.title}</h3>
+                  <blockquote>{t.evidence}</blockquote>
+                  <div className="row wrap">
+                    {t.timestamp !== null && asset && (
+                      <button
+                        className="timestamp"
+                        onClick={() => {
+                          if (audio.current) {
+                            audio.current.currentTime = t.timestamp!;
+                            void audio.current.play().catch(() => {});
+                          }
+                        }}
+                      >
+                        Ouvir em {clock(t.timestamp)}
+                      </button>
+                    )}
+                    <button
+                      className="btn small secondary"
+                      disabled={accepted.includes(i)}
+                      onClick={async () => {
+                        try {
+                          await db.tasks.add({
+                            id: uid(),
+                            pieceId: lesson.pieceId,
+                            lessonId: lesson.id,
+                            title: t.title,
+                            done: false,
+                            dueDate: '',
+                            createdAt: now(),
+                          });
+                          setAccepted(a => [...a, i]);
+                          notify('Tarefa adicionada ao plano.');
+                        } catch (err) {
+                          notify(errorText(err));
+                        }
+                      }}
+                    >
+                      <Check size={15} />
+                      {accepted.includes(i) ? 'Adicionada' : 'Adicionar tarefa'}
+                    </button>
+                  </div>
+                </article>
+              ))}
+              {proposal?.questions.length ? (
+                <article className="note-card">
+                  <h3>Para a próxima aula</h3>
+                  <ul>
+                    {proposal.questions.map((q, i) => (
+                      <li key={i}>{q}</li>
+                    ))}
+                  </ul>
+                </article>
+              ) : null}
+            </>
+          )}
+        </section>
+      </div>
+    </>
+  );
 }
