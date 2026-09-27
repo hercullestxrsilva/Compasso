@@ -566,6 +566,17 @@
 .piece-detail .score-card > .score-card-heading {
   padding: var(--space-2) var(--space-3);
 }
+/* Phone: back and edit share the first row, the title takes the second. */
+@media (max-width: 700px) {
+  .piece-header > .btn {
+    order: 1;
+    margin-left: auto;
+  }
+  .piece-header-main {
+    order: 2;
+    flex-basis: 100%;
+  }
+}
 .score-version {
   display: flex;
   align-items: center;
