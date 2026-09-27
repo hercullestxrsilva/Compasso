@@ -86,8 +86,10 @@ export interface RecorderProps {
   beforeStart?: () => Promise<boolean>;
   /** Called about every second while recording with the elapsed seconds. */
   onElapsed?: (seconds: number) => void;
-  /** Name the app shell shows while recording, e.g. "Gravação da aula". Defaults to `label`. */
+  /** Name the app shell shows while recording, e.g. "Gravação da aula". Defaults to one based on `origin`. */
   activityLabel?: string;
+  /** MediaRecorder bitrate; defaults to 128 kbps for 'music' and 64 kbps for 'voice'. */
+  bitsPerSecond?: number;
   /** When given, the student can switch between 'music' and 'voice' before recording. */
   onProfileChange?: (profile: CaptureProfile) => void;
   /** Reports problems that happen after this screen was left (the audio then stays recoverable). */
@@ -109,6 +111,7 @@ export default function Recorder({
   beforeStart,
   onElapsed,
   activityLabel,
+  bitsPerSecond,
   onProfileChange,
   notify,
 }: RecorderProps) {
@@ -116,10 +119,18 @@ export default function Recorder({
     alive = useRef(true),
     starting = useRef(false);
   const meter = useRef<{ context: AudioContext; timer: number } | null>(null);
+  // The shell shows this as a status ("Gravação da aula · 3:12"), so it is not the button's command.
+  const status =
+    activityLabel ??
+    (origin?.kind === 'lesson'
+      ? 'Gravação da aula'
+      : origin?.kind === 'attempt'
+        ? 'Gravação da tentativa'
+        : 'Gravação em andamento');
   // A recording that outlives this screen still saves through the latest callbacks.
-  const latest = useRef({ onFile, onElapsed, notify, label: activityLabel ?? label });
+  const latest = useRef({ onFile, onElapsed, notify, label: status });
   useEffect(() => {
-    latest.current = { onFile, onElapsed, notify, label: activityLabel ?? label };
+    latest.current = { onFile, onElapsed, notify, label: status };
   });
   const [phase, setPhase] = useState<Phase>('idle'),
     [seconds, setSeconds] = useState(0),
@@ -262,7 +273,7 @@ export default function Recorder({
         );
       setNoSignal(false);
       void listDevices();
-      const options = recorderOptions(profile, t => MediaRecorder.isTypeSupported(t));
+      const options = recorderOptions(profile, t => MediaRecorder.isTypeSupported(t), bitsPerSecond);
       let recorder: MediaRecorder;
       try {
         recorder = new MediaRecorder(stream, options);

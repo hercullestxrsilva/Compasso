@@ -13,31 +13,33 @@ import {
   RotateCcw,
   RotateCw,
   Pencil,
-  X,
 } from 'lucide-react';
 import { db } from '../db';
-import { uid, now, localDay, formatDate, clock, type Asset, type Lesson, type Note } from '../domain';
+import { uid, now, localDay, formatDate, clock, type Lesson, type Note, type Task } from '../domain';
 import { Field, Modal, Empty, ErrorBox, Badge, download, errorText, useConfirm, type Notify } from './common';
 import Recorder from './Recorder';
 import CaptureRecovery, { formatSize, setLessonAudio } from './CaptureRecovery';
 import { aiFetch, AiError } from '../services';
+import { LESSON_BITS_PER_SECOND, type CaptureProfile } from '../audio/recording';
+import { draftMoment, noteTimeHint, stampTime, type NoteMoment } from '../lessons/noteTime';
 import {
-  decodeForTranscription,
-  maxSplitSeconds,
-  planParts,
-  probeDuration,
-  transcriptFromParts,
-  wavPart,
-  type CaptureProfile,
-  type TranscriptPart,
-} from '../audio/recording';
+  MAX_UPLOAD_BYTES,
+  PartialTranscript,
+  cancelTranscription,
+  checkSplit,
+  runTranscription,
+  useTranscription,
+  type SplitCheck,
+} from '../lessons/transcription';
 import '../styles/lessons.css';
 
 /** AI questions saved as lesson notes start with this, so other screens (e.g. the next-lesson report) can find them. */
 export const QUESTION_PREFIX = 'Pergunta para a próxima aula: ';
-const MAX_UPLOAD_BYTES = 24 * 1024 * 1024;
 const PROFILE_KEY = 'compasso.lessonRecordingProfile';
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+/** "a, b e c" */
+const listText = (items: string[]) =>
+  items.length > 1 ? `${items.slice(0, -1).join(', ')} e ${items.at(-1)}` : (items[0] ?? '');
+const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 const isAudioFile = (file: File) =>
   file.type.startsWith('audio/') || /\.(mp3|m4a|wav|webm|ogg|mp4|aac)$/i.test(file.name);
 
@@ -133,7 +135,7 @@ function LessonForm({
           </select>
         </Field>
         <ErrorBox message={error} />
-        <footer className="modal-actions">
+        <footer className="modal-actions lesson-form-actions">
           {onDelete && (
             <button type="button" className="link-btn danger-link" onClick={onDelete}>
               <Trash2 size={16} />
@@ -224,9 +226,6 @@ export default function Lessons({
   );
 }
 
-/** The time a note refers to; `manual` once the student adjusted it, so it is not re-stamped. */
-type NoteMoment = { at: number | null; manual: boolean };
-
 function NoteTime({
   value,
   onChange,
@@ -271,14 +270,8 @@ function NoteTime({
               Agora
             </button>
           )}
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label="Salvar sem tempo"
-            title="Salvar sem tempo"
-            onClick={() => onChange(null)}
-          >
-            <X size={16} />
+          <button type="button" className="btn small secondary" onClick={() => onChange(null)}>
+            Remover tempo
           </button>
         </>
       ) : (
@@ -432,11 +425,18 @@ function LessonNote({
 }
 
 function LessonTasks({ lesson, notify }: { lesson: Lesson; notify: Notify }) {
+  const tasks = useLiveQuery(() => db.tasks.where('lessonId').equals(lesson.id).toArray(), [lesson.id]);
+  return tasks ? <LessonTaskList lesson={lesson} tasks={tasks} notify={notify} /> : null;
+}
+function LessonTaskList({ lesson, tasks, notify }: { lesson: Lesson; tasks: Task[]; notify: Notify }) {
   const confirm = useConfirm();
-  const tasks = useLiveQuery(() => db.tasks.where('lessonId').equals(lesson.id).toArray(), [lesson.id]) ?? [];
   const [title, setTitle] = useState('');
+  // Done tasks go last, but by their state when the tab opened: a row that re-sorted on every tap
+  // would slide another task under the student's finger.
+  const [doneAtOpen] = useState(() => new Set(tasks.filter(t => t.done).map(t => t.id)));
   const sorted = [...tasks].sort(
-    (a, b) => Number(a.done) - Number(b.done) || a.createdAt.localeCompare(b.createdAt),
+    (a, b) =>
+      Number(doneAtOpen.has(a.id)) - Number(doneAtOpen.has(b.id)) || a.createdAt.localeCompare(b.createdAt),
   );
   return (
     <div className="lesson-tasks">
@@ -527,99 +527,6 @@ function LessonTasks({ lesson, notify }: { lesson: Lesson; notify: Notify }) {
   );
 }
 
-class PartialTranscript extends Error {
-  constructor(
-    readonly text: string,
-    readonly done: number,
-    readonly total: number,
-    cause: unknown,
-  ) {
-    super(errorText(cause), { cause });
-  }
-}
-const pause = (ms: number, signal: AbortSignal) =>
-  new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(timer);
-        reject(new AiError('Operação cancelada.', 0, undefined, true));
-      },
-      { once: true },
-    );
-  });
-/**
- * Transcribes a lesson. Files over the 24 MB upload limit are decoded to 16 kHz mono and sent as
- * ~10-minute WAV parts, one at a time, with timestamps offset to the whole recording.
- */
-async function transcribeAudio(asset: Asset, signal: AbortSignal, onProgress: (text: string) => void) {
-  const send = async (file: Blob, name: string) => {
-    for (let attempt = 0; ; attempt++) {
-      const form = new FormData();
-      form.append('audio', file, name);
-      try {
-        return (await aiFetch('/api/transcribe', { method: 'POST', body: form, signal })) as {
-          text?: string;
-          segments?: { start: number; text: string }[];
-        };
-      } catch (err) {
-        if (!(err instanceof AiError) || err.status !== 429 || attempt >= 3) throw err;
-        const wait = Math.min(60, err.retryAfter ?? 15);
-        onProgress(`O serviço pediu uma pausa. Tentando de novo em ${wait} s…`);
-        await pause(wait * 1000, signal);
-      }
-    }
-  };
-  if (asset.size <= MAX_UPLOAD_BYTES) {
-    onProgress('Enviando o áudio…');
-    const data = await send(asset.blob, asset.name);
-    return transcriptFromParts([{ offset: 0, text: data.text ?? '', segments: data.segments ?? [] }]);
-  }
-  const touch = window.matchMedia('(pointer: coarse)').matches;
-  onProgress('Medindo o áudio…');
-  const duration = await probeDuration(asset.blob);
-  if (!Number.isFinite(duration))
-    throw new Error(
-      'Não foi possível medir a duração deste áudio para dividi-lo em partes. Importe um trecho menor ou cole a transcrição.',
-    );
-  const limit = maxSplitSeconds(touch);
-  if (duration > limit)
-    throw new Error(
-      `Este áudio tem ${clock(duration)}. ${touch ? 'No iPad' : 'Neste dispositivo'}, a transcrição em partes aceita até ${limit / 60} minutos. Importe um trecho menor ou cole a transcrição.`,
-    );
-  onProgress('Preparando o áudio em partes…');
-  const decoded = await decodeForTranscription(asset.blob);
-  const plan = planParts(decoded.duration, decoded.sampleRate),
-    parts: TranscriptPart[] = [],
-    base = asset.name.replace(/\.[^.]+$/, '');
-  try {
-    for (const [i, part] of plan.entries()) {
-      if (signal.aborted) throw new AiError('Operação cancelada.', 0, undefined, true);
-      onProgress(`Transcrevendo parte ${i + 1} de ${plan.length}…`);
-      const file = wavPart(
-        decoded.samples,
-        decoded.sampleRate,
-        part.start,
-        part.end,
-        `${base}-parte-${i + 1}.wav`,
-      );
-      const data = await send(file, file.name);
-      parts.push({ offset: part.start, text: data.text ?? '', segments: data.segments ?? [] });
-    }
-  } catch (err) {
-    if (!parts.length) throw err;
-    const stop = plan[parts.length].start;
-    throw new PartialTranscript(
-      `${transcriptFromParts(parts)}\n[${clock(stop)}] (transcrição interrompida aqui)`,
-      parts.length,
-      plan.length,
-      err,
-    );
-  }
-  return transcriptFromParts(parts);
-}
-
 function readProfile(): CaptureProfile {
   try {
     return localStorage.getItem(PROFILE_KEY) === 'voice' ? 'voice' : 'music';
@@ -664,17 +571,20 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
     [moment, setMoment] = useState<NoteMoment | null>(null),
     [transcript, setTranscript] = useState(lesson.transcript);
   const [tab, setTab] = useState<Tab>('notes'),
-    [busy, setBusy] = useState(''),
-    [progress, setProgress] = useState(''),
+    [analyzing, setAnalyzing] = useState(false),
     [error, setError] = useState(''),
-    [editing, setEditing] = useState(false);
+    [editing, setEditing] = useState(false),
+    [split, setSplit] = useState<SplitCheck | null>(null);
   const [proposal, setProposal] = useState<Proposal>(),
     [summaryDraft, setSummaryDraft] = useState<string | null>(null),
     [accepted, setAccepted] = useState<number[]>([]),
     [questionsSaved, setQuestionsSaved] = useState(false);
+  const job = useTranscription(lesson.id),
+    transcribing = !!job;
   const audio = useRef<HTMLAudioElement>(null),
-    cancel = useRef<AbortController | null>(null);
+    alive = useRef(true);
   const tabIds = useId();
+  const knownDuration = Number.isFinite(duration) ? duration : undefined;
   useEffect(() => {
     if (!asset) {
       setUrl('');
@@ -688,7 +598,25 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
   useEffect(() => {
     setTranscript(lesson.transcript);
   }, [lesson.transcript]);
-  useEffect(() => () => cancel.current?.abort(), []);
+  // A transcription keeps running after this screen is left; `alive` only decides where its result is shown.
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  // Tell the student before they tap whether a large file can be split on this device.
+  useEffect(() => {
+    if (tab !== 'transcript' || !asset || asset.size <= MAX_UPLOAD_BYTES) return;
+    let current = true;
+    setSplit(null);
+    void checkSplit(asset.blob, knownDuration).then(result => {
+      if (current) setSplit(result);
+    });
+    return () => {
+      current = false;
+    };
+  }, [tab, asset, knownDuration]);
   const onBusyChange = useCallback((busy: boolean) => {
     setCapturing(busy);
     if (!busy) setRecElapsed(null);
@@ -701,15 +629,14 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
     [lesson.id, notify],
   );
   const recordingLive = capturing && recElapsed !== null;
-  // A note is stamped with the live recording time, or with the player position once the audio was played
-  // or moved; an untouched player would otherwise stamp every note at 0:00.
   const canStamp = recordingLive || (!!url && heard);
-  const stamp = () => {
-    if (capturing && recElapsed !== null) return recElapsed;
-    const player = audio.current;
-    if (url && player && (heard || player.currentTime > 0)) return player.currentTime;
-    return null;
-  };
+  const stamp = () =>
+    stampTime({
+      recordingElapsed: capturing ? recElapsed : null,
+      hasAudio: !!url && !!audio.current,
+      heard,
+      currentTime: audio.current?.currentTime ?? 0,
+    });
   const playFrom = (seconds: number) => {
     const player = audio.current;
     if (!player) return;
@@ -725,9 +652,7 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
   };
   const startDraft = () => {
     const at = stamp();
-    if (at === null) return;
-    if (!moment || (!moment.manual && moment.at !== null && Math.abs(at - moment.at) > 3))
-      setMoment({ at, manual: false });
+    setMoment(current => draftMoment(current, at));
   };
   const confirmReplace = async (action: 'record' | 'import') =>
     !lesson.assetId ||
@@ -737,10 +662,24 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
         action === 'record'
           ? 'Quando a nova gravação terminar, ele será apagado e substituído.'
           : 'Ele será apagado e substituído pelo arquivo escolhido.'
-      } Suas anotações e os tempos delas continuam.`,
+      } Suas anotações continuam, mas os tempos marcados nelas vão apontar para o novo áudio.`,
       confirmLabel: action === 'record' ? 'Gravar e substituir' : 'Substituir áudio',
       danger: true,
     });
+  const pendingSuggestions = proposal ? proposal.tasks.length - accepted.length : 0;
+  const unsaved = [
+    summaryDraft !== null && summaryDraft.trim() !== lesson.summary.trim()
+      ? proposal
+        ? 'o resumo sugerido'
+        : 'o resumo editado'
+      : '',
+    proposal?.questions.length && !questionsSaved ? 'as perguntas para a próxima aula' : '',
+    pendingSuggestions === 1
+      ? 'uma tarefa sugerida'
+      : pendingSuggestions > 1
+        ? `${pendingSuggestions} tarefas sugeridas`
+        : '',
+  ].filter(Boolean);
   const back = async () => {
     if (
       capturing &&
@@ -753,17 +692,30 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
       }))
     )
       return;
+    if (
+      unsaved.length &&
+      !(await confirm({
+        title: 'Sair sem guardar as sugestões?',
+        message: `Você ainda não guardou ${listText(unsaved)}. As sugestões do assistente não ficam salvas quando você sai da aula.`,
+        confirmLabel: 'Sair sem guardar',
+        cancelLabel: 'Continuar aqui',
+        danger: true,
+      }))
+    )
+      return;
     onBack();
   };
   const remove = async () => {
-    const lost = [
+    const items = [
+      `a aula “${lesson.title}”`,
       asset ? `o áudio (${formatSize(asset.size)})` : '',
-      notes.length ? plural(notes.length, 'anotação', 'anotações') : '',
+      notes.length === 1 ? 'uma anotação' : notes.length ? `${notes.length} anotações` : '',
     ].filter(Boolean);
-    const items = [`A aula “${lesson.title}”`, ...lost];
-    const what = lost.length
-      ? `${items.slice(0, -1).join(', ')} e ${items.at(-1)} serão apagados deste dispositivo.`
-      : `A aula “${lesson.title}” será apagada deste dispositivo.`;
+    // "a aula" and "anotações" are feminine; with "o áudio" in the list the participle is masculine.
+    const what =
+      items.length === 1
+        ? `A aula “${lesson.title}” será apagada deste dispositivo.`
+        : `${capitalize(listText(items))} serão ${asset ? 'apagados' : 'apagadas'} deste dispositivo.`;
     if (
       !(await confirm({
         title: 'Excluir esta aula?',
@@ -805,7 +757,7 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
     }
   };
   const transcribe = async () => {
-    if (!asset) return;
+    if (!asset || transcribing) return;
     if (
       (transcript.trim() || lesson.transcript.trim()) &&
       !(await confirm({
@@ -816,40 +768,58 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
       }))
     )
       return;
-    const controller = new AbortController();
-    cancel.current = controller;
     setError('');
-    setBusy('transcribe');
-    const save = async (text: string) => {
-      await db.lessons.update(lesson.id, { transcript: text });
-      setTranscript(text);
-      setTab('transcript');
-    };
+    // Once the student has left the lesson, results arrive as toasts that name it.
+    const where = () => (alive.current ? '' : ` da aula “${lesson.title}”`);
     try {
-      await save(await transcribeAudio(asset, controller.signal, setProgress));
-      notify('Transcrição salva. Revise os trechos ambíguos.');
+      await runTranscription(lesson.id, asset, knownDuration);
+      notify(`Transcrição${where()} salva. Revise os trechos ambíguos.`);
+      if (alive.current) setTab('transcript');
     } catch (err) {
       const cause = err instanceof PartialTranscript ? err.cause : err;
       const cancelled = cause instanceof AiError && cause.cancelled;
       if (err instanceof PartialTranscript) {
-        await save(err.text).catch(() => {});
         const kept =
           err.done === 1 ? 'A primeira parte foi salva' : `As ${err.done} primeiras partes foram salvas`;
         notify(
-          `${cancelled ? 'Transcrição cancelada' : 'A transcrição parou'} na parte ${err.done + 1} de ${err.total}. ${kept}.`,
+          `${cancelled ? 'Transcrição cancelada' : 'A transcrição parou'}${where()} na parte ${err.done + 1} de ${err.total}. ${kept}.`,
           'info',
         );
-      } else if (cancelled) notify('Transcrição cancelada.', 'info');
-      if (!cancelled) setError(errorText(cause));
-    } finally {
-      cancel.current = null;
-      setBusy('');
-      setProgress('');
+      } else if (cancelled) notify(`Transcrição${where()} cancelada.`, 'info');
+      if (!cancelled) {
+        if (alive.current) setError(errorText(cause));
+        else notify(`A transcrição${where()} não foi concluída. ${errorText(cause)}`, 'error');
+      }
+    }
+  };
+  /** Saves the questions not yet among the notes; returns how many were added, or null on failure. */
+  const saveQuestions = async (questions: string[]) => {
+    try {
+      const existing = new Set(notes.map(n => n.text));
+      const fresh = [...new Set(questions.map(q => q.trim()))].filter(
+        q => q && !existing.has(QUESTION_PREFIX + q),
+      );
+      const start = Date.now();
+      await db.notes.bulkAdd(
+        fresh.map((q, i) => ({
+          id: uid(),
+          lessonId: lesson.id,
+          pieceId: lesson.pieceId || undefined,
+          text: QUESTION_PREFIX + q,
+          source: 'ai' as const,
+          createdAt: new Date(start + i).toISOString(),
+        })),
+      );
+      setQuestionsSaved(true);
+      return fresh.length;
+    } catch (err) {
+      notify(errorText(err), 'error');
+      return null;
     }
   };
   const analyze = async () => {
     setError('');
-    setBusy('summarize');
+    setAnalyzing(true);
     try {
       if (!transcript.trim()) throw new Error('Adicione ou cole a transcrição antes de pedir sugestões.');
       await db.lessons.update(lesson.id, { transcript });
@@ -863,33 +833,25 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
       setAccepted([]);
       setQuestionsSaved(false);
       setTab('ai');
+      // The questions and a first summary are kept right away, so leaving the lesson cannot lose them;
+      // tasks stay suggestions until the student adds them.
+      const saved: string[] = [];
+      if (!lesson.summary.trim() && data.summary.trim()) {
+        await db.lessons.update(lesson.id, { summary: data.summary.trim() });
+        saved.push('Resumo salvo nesta aula.');
+      }
+      const added = data.questions.length ? await saveQuestions(data.questions) : 0;
+      if (added)
+        saved.push(
+          added === 1
+            ? 'A pergunta para a próxima aula foi guardada nas anotações.'
+            : `${added} perguntas para a próxima aula foram guardadas nas anotações.`,
+        );
+      if (saved.length) notify(saved.join(' '));
     } catch (err) {
       setError(errorText(err));
     } finally {
-      setBusy('');
-    }
-  };
-  const saveQuestions = async (questions: string[]) => {
-    try {
-      const start = Date.now();
-      await db.notes.bulkAdd(
-        questions.map((q, i) => ({
-          id: uid(),
-          lessonId: lesson.id,
-          pieceId: lesson.pieceId || undefined,
-          text: QUESTION_PREFIX + q.trim(),
-          source: 'ai' as const,
-          createdAt: new Date(start + i).toISOString(),
-        })),
-      );
-      setQuestionsSaved(true);
-      notify(
-        questions.length === 1
-          ? 'Pergunta guardada nas anotações desta aula.'
-          : `${questions.length} perguntas guardadas nas anotações desta aula.`,
-      );
-    } catch (err) {
-      notify(errorText(err), 'error');
+      setAnalyzing(false);
     }
   };
   const moveTab = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -922,7 +884,7 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
   const savedSummary = lesson.summary;
   return (
     <>
-      <button className="back-link" onClick={() => void back()}>
+      <button className="back-link lesson-back" onClick={() => void back()}>
         <ArrowLeft size={17} />
         Todas as aulas
       </button>
@@ -1044,6 +1006,7 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
               beforeStart={() => confirmReplace('record')}
               origin={{ kind: 'lesson', lessonId: lesson.id }}
               profile={profile}
+              bitsPerSecond={LESSON_BITS_PER_SECOND}
               onProfileChange={p => {
                 setProfile(p);
                 try {
@@ -1124,11 +1087,11 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
                       canStamp={canStamp}
                       stamp={stamp}
                       max={recordingLive ? Infinity : duration}
-                      idleHint={
-                        canStamp
-                          ? 'O tempo é marcado quando você começa a escrever.'
-                          : 'Dê play no áudio para marcar o tempo da anotação.'
-                      }
+                      idleHint={noteTimeHint({
+                        canStamp,
+                        hasText: !!note.trim(),
+                        removed: !!moment?.manual,
+                      })}
                     />
                   )}
                   <div className="note-form-actions">
@@ -1142,7 +1105,7 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
                   <LessonNote
                     key={n.id}
                     note={n}
-                    hasAudio={!!url}
+                    hasAudio={!!url && !capturing}
                     canStamp={canStamp}
                     stamp={stamp}
                     duration={duration}
@@ -1160,13 +1123,15 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
                   Cole uma transcrição ou use o serviço de IA configurado. Corrija palavras e nomes quando
                   necessário.
                 </p>
+                {/* Read-only while the AI works: its result replaces the text when it arrives. */}
                 <textarea
                   className="transcript-editor"
                   aria-label="Transcrição da aula"
                   value={transcript}
+                  readOnly={transcribing}
                   onChange={e => setTranscript(e.target.value)}
                   onBlur={() => {
-                    if (transcript !== lesson.transcript)
+                    if (!transcribing && transcript !== lesson.transcript)
                       void db.lessons
                         .update(lesson.id, { transcript })
                         .catch(err => notify(errorText(err), 'error'));
@@ -1174,13 +1139,16 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
                   maxLength={100000}
                   placeholder="[0:00] Comece pela mão esquerda…"
                 />
-                {busy === 'transcribe' && (
+                {job && (
                   <div className="transcribe-progress" role="status">
-                    <span>{progress || 'Transcrevendo…'}</span>
+                    <span>
+                      {job.progress || 'Transcrevendo…'} Você pode sair desta aula: a transcrição continua e é
+                      salva aqui. Mantenha o app aberto.
+                    </span>
                     <button
                       type="button"
                       className="btn small secondary"
-                      onClick={() => cancel.current?.abort()}
+                      onClick={() => cancelTranscription(lesson.id)}
                     >
                       Cancelar
                     </button>
@@ -1189,6 +1157,7 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
                 <div className="row wrap">
                   <button
                     className="btn"
+                    disabled={transcribing}
                     onClick={async () => {
                       try {
                         await db.lessons.update(lesson.id, { transcript });
@@ -1202,17 +1171,20 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
                   </button>
                   <button
                     className="btn secondary"
-                    disabled={!!busy || !asset}
+                    disabled={transcribing || analyzing || !asset || split?.ok === false}
                     onClick={() => void transcribe()}
                   >
                     <Sparkles size={16} />
-                    {busy === 'transcribe' ? 'Transcrevendo…' : 'Transcrever áudio com IA'}
+                    {transcribing ? 'Transcrevendo…' : 'Transcrever áudio com IA'}
                   </button>
                 </div>
-                {asset && asset.size > MAX_UPLOAD_BYTES && (
-                  <p className="hint">
-                    Este áudio tem {formatSize(asset.size)}; ele será enviado em partes de cerca de 10
-                    minutos.
+                {asset && asset.size > MAX_UPLOAD_BYTES && !transcribing && (
+                  <p className={split?.ok === false ? 'recorder-warning' : 'hint'}>
+                    {!split
+                      ? `Este áudio tem ${formatSize(asset.size)}. Verificando se ele pode ser enviado em partes…`
+                      : split.ok
+                        ? `Este áudio tem ${formatSize(asset.size)}, acima do limite de um envio. Ele será enviado em ${split.parts} partes de cerca de 10 minutos, uma de cada vez.`
+                        : split.message}
                   </p>
                 )}
               </>
@@ -1229,11 +1201,11 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
                 </div>
                 <button
                   className="btn"
-                  disabled={!!busy || !transcript.trim()}
+                  disabled={analyzing || transcribing || !transcript.trim()}
                   onClick={() => void analyze()}
                 >
                   <Sparkles size={17} />
-                  {busy === 'summarize' ? 'Preparando sugestões…' : 'Analisar transcrição'}
+                  {analyzing ? 'Preparando sugestões…' : 'Analisar transcrição'}
                 </button>
                 <p className="hint">
                   Requer serviço de IA configurado e conexão. Nenhum resultado é gerado sem esse serviço.
@@ -1338,18 +1310,32 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
                         <li key={i}>{q}</li>
                       ))}
                     </ul>
-                    <button
-                      className="btn small secondary"
-                      disabled={questionsSaved}
-                      onClick={() => void saveQuestions(proposal.questions)}
-                    >
-                      <BookmarkPlus size={15} />
-                      {questionsSaved
-                        ? 'Guardadas nas anotações'
-                        : proposal.questions.length === 1
+                    {questionsSaved ? (
+                      <p className="hint">
+                        <Check size={14} aria-hidden="true" />{' '}
+                        {proposal.questions.length === 1
+                          ? 'Guardada nas anotações desta aula.'
+                          : 'Guardadas nas anotações desta aula.'}
+                      </p>
+                    ) : (
+                      <button
+                        className="btn small secondary"
+                        onClick={async () => {
+                          const added = await saveQuestions(proposal.questions);
+                          if (added !== null)
+                            notify(
+                              proposal.questions.length === 1
+                                ? 'Pergunta guardada nas anotações desta aula.'
+                                : 'Perguntas guardadas nas anotações desta aula.',
+                            );
+                        }}
+                      >
+                        <BookmarkPlus size={15} />
+                        {proposal.questions.length === 1
                           ? 'Guardar pergunta nas anotações'
                           : 'Guardar perguntas nas anotações'}
-                    </button>
+                      </button>
+                    )}
                   </article>
                 ) : null}
               </>
@@ -1362,7 +1348,7 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
           lesson={lesson}
           onClose={() => setEditing(false)}
           onSaved={() => notify('Aula atualizada.')}
-          onDelete={capturing ? undefined : () => void remove()}
+          onDelete={capturing || transcribing ? undefined : () => void remove()}
         />
       )}
     </>

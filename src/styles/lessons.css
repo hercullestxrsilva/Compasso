@@ -21,8 +21,10 @@
 
 /* Interrupted captures */
 .capture-recovery {
-  border: 1px solid #ecd6b0;
-  background: #fdf8ef;
+  border: 1px solid var(--gold);
+  border-color: color-mix(in srgb, var(--gold) 45%, var(--paper));
+  background: var(--paper);
+  background: color-mix(in srgb, var(--gold) 9%, var(--paper));
   border-radius: var(--radius);
   padding: 18px 20px 8px;
   margin-bottom: 23px;
@@ -46,7 +48,8 @@
   align-items: center;
   gap: 8px 16px;
   padding: 12px 0;
-  border-top: 1px solid #efe3cc;
+  border-top: 1px solid var(--line);
+  border-top-color: color-mix(in srgb, var(--gold) 28%, var(--paper));
 }
 .capture-info {
   flex: 1 1 220px;
@@ -93,9 +96,13 @@
   flex-basis: 100%;
   max-width: 100%;
 }
-.icon-btn.danger:hover:not(:disabled) {
-  color: #a23a3a;
-  background: #fbecec;
+/* The app's danger red (as in .btn.danger); only where these screens use it, and only with a real hover. */
+@media (hover: hover) {
+  .capture-recovery .icon-btn.danger:hover:not(:disabled),
+  .lesson-workspace .icon-btn.danger:hover:not(:disabled) {
+    color: #a23a3a;
+    background: color-mix(in srgb, #a23a3a 9%, var(--paper));
+  }
 }
 
 /* Lesson list */
@@ -221,7 +228,7 @@
 }
 
 /* Edit form */
-.modal-actions .danger-link {
+.lesson-form-actions .danger-link {
   color: #a23a3a;
   margin-right: auto;
 }
@@ -238,9 +245,15 @@
   .capture-recovery .icon-btn,
   .capture-recovery select,
   .recorder select,
-  .modal-actions .btn,
-  .modal-actions .link-btn {
+  .lesson-form-actions .btn,
+  .lesson-form-actions .link-btn,
+  .lesson-workspace .link-btn,
+  .back-link.lesson-back {
     min-height: 44px;
+  }
+  .lesson-workspace .link-btn,
+  .back-link.lesson-back {
+    padding-block: 10px;
   }
   .lesson-workspace .icon-btn,
   .capture-recovery .icon-btn {
@@ -263,6 +276,15 @@
   }
   .lesson-workspace .icon-btn.subtle {
     opacity: 0.85;
+  }
+}
+/* iOS keeps :hover on the last tapped element, and the base rule styles a hovered box as ticked:
+   a task that was just reopened would still look done. */
+@media (hover: none) {
+  .lesson-workspace .check-button:not(.checked):hover {
+    background: var(--paper);
+    border-color: color-mix(in srgb, var(--muted) 35%, var(--paper));
+    color: transparent;
   }
 }
 @media (max-width: 700px) {
