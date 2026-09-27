@@ -159,7 +159,7 @@ export default function SessionReview({
               key={key}
               type="button"
               aria-pressed={rating === key}
-              className={rating === key ? 'selected' : ''}
+              className={`rating-${key}${rating === key ? ' selected' : ''}`}
               onClick={() => setRating(rating === key ? undefined : key)}
             >
               {label}
