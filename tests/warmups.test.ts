@@ -207,3 +207,19 @@ describe('études and other books', () => {
     expect(sortExercises(list).map(e => e.id)).toEqual(['a', 'b', 'late']);
   });
 });
+
+describe('collection order', () => {
+  it('puts major scales first, then minor scales, then études and the rest', async () => {
+    const { collectionRank } = await import('../src/warmups/collections');
+    const scales = { warmup: { kind: 'scales' as const } };
+    const summary = (...modes: string[]) => ({ count: modes.length, modes: new Set(modes) });
+    const ranks = [
+      collectionRank(scales, summary('natural-minor', 'harmonic-minor')),
+      collectionRank({ warmup: { kind: 'etudes' as const } }, summary()),
+      collectionRank(scales, summary('major')),
+      collectionRank({ warmup: { kind: 'other' as const } }),
+      collectionRank(scales, summary('major', 'natural-minor')),
+    ];
+    expect(ranks).toEqual([1, 2, 0, 3, 0]);
+  });
+});

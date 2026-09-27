@@ -29,12 +29,14 @@ import { inspectFile, pageExercises, type Inspection } from '../warmups/detect';
 import {
   addExercise,
   addPageExercises,
+  collectionRank,
   createCollection,
   deleteExercise,
   moveExercise,
   renameCollection,
   renameExercise,
   sortExercises,
+  type CollectionSummary,
 } from '../warmups/collections';
 import { keyOrder, keySide, keySignature, modeLabels, signatureLabel, tonicName } from '../warmups/scales';
 import {
@@ -93,9 +95,38 @@ export default function Warmups({
 }) {
   const confirm = useConfirm();
   const piecesQuery = useLiveQuery(() => db.pieces.toArray());
+  const warmupIds = (piecesQuery ?? [])
+    .filter(isWarmup)
+    .map(p => p.id)
+    .join(',');
+  // Exercise count and scale modes per collection: the tabs show the count and follow collectionRank.
+  const summariesQuery = useLiveQuery(
+    async () =>
+      new Map<string, CollectionSummary>(
+        await Promise.all(
+          warmupIds
+            .split(',')
+            .filter(Boolean)
+            .map(async id => {
+              const list = await db.segments.where('pieceId').equals(id).toArray();
+              const modes = new Set(list.flatMap(s => (s.exercise?.mode ? [s.exercise.mode] : [])));
+              return [id, { count: list.length, modes }] as const;
+            }),
+        ),
+      ),
+    [warmupIds],
+  );
+  const summaries = useMemo(() => summariesQuery ?? new Map<string, CollectionSummary>(), [summariesQuery]);
   const collections = useMemo(
-    () => (piecesQuery ?? []).filter(isWarmup).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
-    [piecesQuery],
+    () =>
+      (piecesQuery ?? [])
+        .filter(isWarmup)
+        .sort(
+          (a, b) =>
+            collectionRank(a, summaries.get(a.id)) - collectionRank(b, summaries.get(b.id)) ||
+            a.createdAt.localeCompare(b.createdAt),
+        ),
+    [piecesQuery, summaries],
   );
   const active = collections.find(c => c.id === collectionId) ?? collections[0];
   const activeId = active?.id;
@@ -104,20 +135,6 @@ export default function Warmups({
     [activeId],
   );
   const exercises = useMemo(() => sortExercises(exercisesQuery ?? []), [exercisesQuery]);
-  const idsKey = collections.map(c => c.id).join(',');
-  const counts =
-    useLiveQuery(
-      async () =>
-        new Map(
-          await Promise.all(
-            idsKey
-              .split(',')
-              .filter(Boolean)
-              .map(async id => [id, await db.segments.where('pieceId').equals(id).count()] as const),
-          ),
-        ),
-      [idsKey],
-    ) ?? new Map<string, number>();
   const remembered = activeId ? rememberedExercise(activeId) : undefined;
   const selected =
     exercises.find(e => e.id === exerciseId) ?? exercises.find(e => e.id === remembered) ?? exercises[0];
@@ -244,7 +261,7 @@ export default function Warmups({
                 onClick={() => onSelect(c.id)}
               >
                 {c.title}
-                <span>{counts.get(c.id) ?? '…'}</span>
+                <span>{summaries.get(c.id)?.count ?? '…'}</span>
               </button>
             ))}
           </div>

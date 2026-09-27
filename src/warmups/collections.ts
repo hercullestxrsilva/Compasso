@@ -4,6 +4,23 @@ import type { ExerciseDraft } from './layouts';
 import { SCALE_PRACTICE } from './scales';
 import { exerciseName, pageExercises } from './detect';
 
+export interface CollectionSummary {
+  count: number;
+  /** Modes of its scales, if any. */
+  modes: Set<string>;
+}
+
+/**
+ * Order of the collections in Aquecimento: major scales first (the usual start of a warm-up), then minor
+ * scales, then études and anything else; within each group, the order they were imported.
+ */
+export function collectionRank(piece: Pick<Piece, 'warmup'>, summary?: CollectionSummary) {
+  const modes = summary?.modes;
+  if (modes?.has('major')) return 0;
+  if (modes && modes.size > 0) return 1;
+  return piece.warmup?.kind === 'scales' ? 1 : piece.warmup?.kind === 'etudes' ? 2 : 3;
+}
+
 /** Exercises of a collection in their order (circle of fifths for scales, number for études). */
 export function sortExercises<S extends Pick<Segment, 'exercise' | 'createdAt'>>(list: S[]) {
   return [...list].sort(
