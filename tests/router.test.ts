@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
+  RESUME_MAX_AGE,
   documentTitle,
   formatRoute,
+  isStartAddress,
   isView,
   normalizeRoute,
   pageKey,
   parseRoute,
+  resumeRecord,
+  resumeRoute,
   sameRoute,
   type Route,
 } from '../src/router';
@@ -104,5 +108,31 @@ describe('route helpers', () => {
   it('recognizes view names', () => {
     expect(isView('practice')).toBe(true);
     expect(isView('praticar')).toBe(false);
+  });
+});
+
+describe('resuming the last screen', () => {
+  const now = Date.UTC(2026, 8, 27, 15, 0);
+  it('reopens a recent screen', () => {
+    const saved = resumeRecord({ view: 'lessons', lessonId: 'l 1' }, now - 60_000);
+    expect(resumeRoute(saved, now)).toEqual({ view: 'lessons', lessonId: 'l 1' });
+    expect(resumeRoute(resumeRecord({ view: 'progress', tab: 'review' }, now), now)).toEqual({
+      view: 'progress',
+      tab: 'review',
+    });
+  });
+  it('forgets old, future, Hoje and unreadable records', () => {
+    expect(resumeRoute(resumeRecord({ view: 'library' }, now - RESUME_MAX_AGE - 1), now)).toBeNull();
+    expect(resumeRoute(resumeRecord({ view: 'library' }, now + 3_600_000), now)).toBeNull();
+    expect(resumeRoute(resumeRecord({ view: 'home' }, now), now)).toBeNull();
+    expect(resumeRoute(null, now)).toBeNull();
+    expect(resumeRoute('{', now)).toBeNull();
+    expect(resumeRoute('"#/aulas"', now)).toBeNull();
+    expect(resumeRoute(JSON.stringify({ hash: '#/aulas', at: 'ontem' }), now)).toBeNull();
+    expect(resumeRoute(JSON.stringify({ hash: '#/qualquer', at: now }), now)).toBeNull();
+  });
+  it('recognizes the start address', () => {
+    expect(['', '#', '#/'].map(isStartAddress)).toEqual([true, true, true]);
+    expect(['#/hoje', '#/aulas', '#conteudo'].map(isStartAddress)).toEqual([false, false, false]);
   });
 });

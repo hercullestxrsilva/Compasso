@@ -20,6 +20,7 @@ import { Field, Modal, Empty, ErrorBox, Badge, download, errorText, useConfirm, 
 import Recorder from './Recorder';
 import CaptureRecovery, { formatSize, setLessonAudio } from './CaptureRecovery';
 import { aiFetch, AiError } from '../services';
+import { setUnsaved } from '../unsaved';
 import { LESSON_BITS_PER_SECOND, type CaptureProfile } from '../audio/recording';
 import { draftMoment, noteTimeHint, stampTime, type NoteMoment } from '../lessons/noteTime';
 import {
@@ -171,8 +172,9 @@ export default function Lessons({
   const selected = selectedId ?? localSelected,
     select = onSelect ?? setLocalSelected;
   const lesson = lessons.find(l => l.id === selected);
-  // A lesson opened from the address or from Hoje: wait for it instead of flashing the list.
-  if (selected && !loaded) return null;
+  // Until the list is read: neither the empty state nor the list flashes before a lesson opened from the
+  // address, from Hoje or on the way back.
+  if (!loaded) return null;
   return lesson ? (
     <LessonDetail key={lesson.id} lesson={lesson} onBack={() => select('')} notify={notify} />
   ) : (
@@ -683,6 +685,15 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
         ? `${pendingSuggestions} tarefas sugeridas`
         : '',
   ].filter(Boolean);
+  const unsavedMessage = unsaved.length
+    ? `Você ainda não guardou ${listText(unsaved)}. As sugestões do assistente não ficam salvas quando você sai da aula.`
+    : '';
+  useEffect(() => {
+    if (!unsavedMessage) return;
+    // Leaving through the sidebar, the top bar or the Back gesture asks too (the app shell reads this).
+    setUnsaved('lesson-suggestions', { title: 'Sair sem guardar as sugestões?', message: unsavedMessage });
+    return () => setUnsaved('lesson-suggestions', null);
+  }, [unsavedMessage]);
   const back = async () => {
     if (
       capturing &&
@@ -699,7 +710,7 @@ function LessonDetail({ lesson, onBack, notify }: { lesson: Lesson; onBack: () =
       unsaved.length &&
       !(await confirm({
         title: 'Sair sem guardar as sugestões?',
-        message: `Você ainda não guardou ${listText(unsaved)}. As sugestões do assistente não ficam salvas quando você sai da aula.`,
+        message: unsavedMessage,
         confirmLabel: 'Sair sem guardar',
         cancelLabel: 'Continuar aqui',
         danger: true,

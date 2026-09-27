@@ -57,6 +57,30 @@
 .topbar-caption {
   flex: none;
 }
+.topbar-activity {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}
+.topbar-activity:focus {
+  outline: none;
+}
+/* While something runs, the bar stays in view with its clock, Voltar and Encerrar. The side shadows cover the
+   page gutters, so nothing scrolls past beside it. */
+.topbar:has(.activity-bar) {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--bg, #f4f7f8);
+  box-shadow:
+    -64px 0 0 var(--bg, #f4f7f8),
+    64px 0 0 var(--bg, #f4f7f8);
+}
+/* Headings and fields reached by links or the keyboard stop below the sticky bars. */
+html:has(.topbar .activity-bar) {
+  scroll-padding-top: 96px;
+}
 .topbar-status {
   display: flex;
   align-items: center;
@@ -210,6 +234,7 @@
   }
 }
 
+/* Fixed to the viewport, also when rendered inside an open dialog (above its content and backdrop). */
 .toast-stack {
   position: fixed;
   left: 50%;
@@ -219,10 +244,18 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
   width: max-content;
   max-width: calc(100vw - 32px);
   pointer-events: none;
+}
+.toast-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.toast-group:not(:empty) + .toast-group:not(:empty) {
+  margin-top: 8px;
 }
 .toast-stack .toast {
   position: static;
@@ -339,5 +372,15 @@
   }
   .toast-stack {
     bottom: calc(14px + env(safe-area-inset-bottom));
+  }
+  /* Below the sticky 64px header (and the activity bar under it). */
+  html {
+    scroll-padding-top: 76px;
+  }
+  html:has(.topbar .activity-bar) {
+    scroll-padding-top: 140px;
+  }
+  .topbar:has(.activity-bar) {
+    top: 64px;
   }
 }

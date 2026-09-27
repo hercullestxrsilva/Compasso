@@ -1,6 +1,7 @@
 /**
  * Hash routes of the app shell, e.g. #/repertorio/<pieceId> or #/evolucao/revisoes. Pure parse and format, so
- * the address survives a reload, Safari's swipe back and iPadOS relaunching the home-screen app.
+ * the address survives a reload and Safari's swipe back. The home-screen app always relaunches at its start
+ * address (no hash), so the shell also saves the last screen and reopens it from resumeRoute().
  */
 export type View = 'home' | 'library' | 'practice' | 'lessons' | 'progress' | 'settings';
 export type ProgressTab = 'history' | 'recordings' | 'review';
@@ -126,3 +127,32 @@ export function documentTitle(route: Route, detail?: string | null) {
   const name = detail?.trim();
   return `${name || viewTitles[route.view]} · Compasso`;
 }
+
+/** How long the last screen is reopened when the home-screen app relaunches at its start address. */
+export const RESUME_MAX_AGE = 12 * 60 * 60 * 1000;
+
+/** What the shell saves after each screen change: the address and when it was shown. */
+export const resumeRecord = (route: Route, now = Date.now()) =>
+  JSON.stringify({ hash: formatRoute(route), at: now });
+
+/**
+ * The screen to reopen from a saved record, or null when there is none, it is older than `maxAge` or cannot be
+ * read. Hoje is never resumed: the app opens there anyway. A piece or lesson deleted since falls back later,
+ * like any old link.
+ */
+export function resumeRoute(saved: string | null, now = Date.now(), maxAge = RESUME_MAX_AGE): Route | null {
+  if (!saved) return null;
+  try {
+    const { hash, at } = JSON.parse(saved) as { hash?: unknown; at?: unknown };
+    if (typeof hash !== 'string' || typeof at !== 'number' || !Number.isFinite(at)) return null;
+    // A clock moved back (or a record from the future) does not count as recent.
+    if (at > now + 60_000 || now - at > maxAge) return null;
+    const route = parseRoute(hash);
+    return route.view === 'home' ? null : route;
+  } catch {
+    return null;
+  }
+}
+
+/** True for the start address: nothing after "#" (or "#/"), as when the home-screen app launches. */
+export const isStartAddress = (hash: string) => !hash.replace(/^#\/?/, '');

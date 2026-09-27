@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { AlertTriangle, ArrowUpRight, Check, Play, WifiOff } from 'lucide-react';
 import { db } from '../db';
 import { getActivities, useActivities, type Activity } from '../activity';
-import { pageKey, type Route } from '../router';
 
 /** "Gravação da aula · Aula de interpretação" → "Gravação da aula". */
 export const activityHead = (activity: Activity) => activity.label.split(' · ')[0] || activity.label;
@@ -14,85 +13,85 @@ export const byUrgency = (a: Activity, b: Activity) =>
 /**
  * The top bar's left side: "● Gravando · 12:34 [Voltar] [Encerrar]" or "▶ Prática · Rep 2/5 [Voltar]" while
  * something runs, otherwise the studio caption. Kept apart so the ticking clock re-renders only this bar.
+ * An activity always runs on the screen being shown (leaving it asks first), so "Voltar" brings its controls
+ * into view and gives them the focus.
  */
-export function TopbarActivity({
-  routeRef,
-  onNavigate,
-}: {
-  routeRef: RefObject<Route>;
-  onNavigate: (route: Route) => void;
-}) {
+export function TopbarActivity() {
   const activities = useActivities();
-  // The screen each kind of activity started on, for "Voltar".
-  const owners = useRef(new Map<Activity['kind'], Route>());
-  useEffect(() => {
-    const kinds = new Set(activities.map(a => a.kind));
-    for (const kind of [...owners.current.keys()]) if (!kinds.has(kind)) owners.current.delete(kind);
-    for (const kind of kinds) if (!owners.current.has(kind)) owners.current.set(kind, routeRef.current);
-  }, [activities, routeRef]);
+  // Holds the focus while the bar changes under it (Encerrar → "Salvando…" → the caption).
+  const box = useRef<HTMLDivElement>(null);
   const activity = [...activities].sort(byUrgency)[0];
-  if (!activity) return <span className="topbar-caption">MEU ESTÚDIO</span>;
-  const recording = activity.kind === 'recording';
-  if (recording && !activity.stop)
-    // Stopped, the file is being written: nothing to go back to or to end.
-    return (
-      <div className="activity-bar recording" role="status">
-        <span className="activity-text">
-          <strong>Salvando a gravação…</strong>
-        </span>
-      </div>
-    );
+  const recording = activity?.kind === 'recording';
   const show = () => {
-    const owner = owners.current.get(activity.kind);
-    if (owner && pageKey(owner) !== pageKey(routeRef.current)) return onNavigate(owner);
-    // Already on its screen: bring the recorder or the practice console into view.
     const control = recording
-      ? document.querySelector('.recorder .btn.danger')?.closest('.recorder')
-      : document.querySelector('.practice-console');
-    const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (control) control.scrollIntoView({ block: 'center', behavior: still ? 'auto' : 'smooth' });
-    else window.scrollTo({ top: 0, behavior: still ? 'auto' : 'smooth' });
+      ? document.querySelector<HTMLElement>('.recorder .btn.danger')
+      : document.querySelector<HTMLElement>('.practice-console .play-btn');
+    const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+    if (!control) return window.scrollTo({ top: 0, behavior });
+    (control.closest('.recorder, .practice-console') ?? control).scrollIntoView({
+      block: 'center',
+      behavior,
+    });
+    control.focus({ preventScroll: true });
+  };
+  const end = () => {
+    box.current?.focus({ preventScroll: true });
+    void activity?.stop?.();
   };
   return (
-    <div
-      className={`activity-bar ${activity.kind}`}
-      role="group"
-      aria-label={`Em andamento: ${activity.label}`}
-    >
-      <span className="activity-icon" aria-hidden="true">
-        {recording ? <span className="rec-dot" /> : <Play size={12} fill="currentColor" />}
-      </span>
-      <span className="activity-text">
-        <strong>{recording ? 'Gravando' : activityHead(activity)}</strong>
-        {activity.detail && <span className="activity-detail"> · {activity.detail}</span>}
-      </span>
-      <button
-        type="button"
-        className="activity-action"
-        aria-label={recording ? 'Voltar para a gravação' : 'Voltar para a prática'}
-        onClick={show}
-      >
-        Voltar
-      </button>
-      {recording && activity.stop && (
-        <button
-          type="button"
-          className="activity-action stop"
-          aria-label="Encerrar a gravação"
-          onClick={() => void activity.stop?.()}
+    <div className="topbar-activity" ref={box} tabIndex={-1}>
+      {!activity ? (
+        <span className="topbar-caption">MEU ESTÚDIO</span>
+      ) : recording && !activity.stop ? (
+        // Stopped, the file is being written: nothing to go back to or to end.
+        <div className="activity-bar recording" role="status">
+          <span className="activity-text">
+            <strong>Salvando a gravação…</strong>
+          </span>
+        </div>
+      ) : (
+        <div
+          className={`activity-bar ${activity.kind}`}
+          role="group"
+          aria-label={`Em andamento: ${activity.label}`}
         >
-          Encerrar
-        </button>
+          <span className="activity-icon" aria-hidden="true">
+            {recording ? <span className="rec-dot" /> : <Play size={12} fill="currentColor" />}
+          </span>
+          <span className="activity-text">
+            <strong>{recording ? 'Gravando' : activityHead(activity)}</strong>
+            {activity.detail && <span className="activity-detail"> · {activity.detail}</span>}
+          </span>
+          <button
+            type="button"
+            className="activity-action"
+            aria-label={recording ? 'Voltar para a gravação' : 'Voltar para a prática'}
+            onClick={show}
+          >
+            Voltar
+          </button>
+          {recording && activity.stop && (
+            <button
+              type="button"
+              className="activity-action stop"
+              aria-label="Encerrar a gravação"
+              onClick={end}
+            >
+              Encerrar
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
 }
 
 interface BackupSnapshot {
+  at: string | null;
   days: number | null;
   age: string;
-  staleAfter: number;
   download: boolean;
+  isStale: (hasData: boolean, days: number | null, newFiles?: number) => boolean;
 }
 /** When the last backup was made. backup.ts loads on demand, so its zip code stays out of the first load. */
 function useLastBackup() {
@@ -104,12 +103,14 @@ function useLastBackup() {
       m => {
         if (!alive) return;
         const sync = () => {
-          const days = m.backupAgeDays(m.lastBackupAt());
+          const at = m.lastBackupAt(),
+            days = m.backupAgeDays(at);
           setSnapshot({
+            at,
             days,
             age: days === null ? '' : m.describeBackupAge(days),
-            staleAfter: m.BACKUP_STALE_DAYS,
             download: m.lastBackupHow() === 'download',
+            isStale: m.isBackupStale,
           });
         };
         sync();
@@ -199,25 +200,42 @@ export function TopbarStatus({
     ).some(n => n > 0),
   );
   const backup = useLastBackup();
+  const since = backup?.at;
+  // Files added after the last backup are not in it (the same rule as in Preferências).
+  const newFiles = useLiveQuery(
+    async () => (since ? db.assets.filter(a => a.createdAt > since).count() : 0),
+    [since],
+  );
   const captures = useInterruptedCaptures();
   const captureText = !captures
     ? ''
     : captures === 1
       ? '1 gravação interrompida'
       : `${captures} gravações interrompidas`;
-  // Nothing until both are known, so the pill does not flash a reassuring text first.
-  const status =
-    !backup || hasData === undefined
-      ? null
-      : backup.days === null
+  // Nothing until everything is known, so the pill does not flash a reassuring text first.
+  const status = (() => {
+    if (!backup || hasData === undefined || newFiles === undefined) return null;
+    const warn = backup.isStale(hasData, backup.days, newFiles);
+    // The short text (phones) is always part of the long one, which starts the accessible name.
+    const text =
+      backup.days === null
         ? hasData
-          ? { long: 'Nenhum backup ainda', short: 'Sem backup', warn: true }
-          : { long: 'Dados neste dispositivo', short: 'Dados locais', warn: false }
-        : {
-            long: `${backup.download ? 'Última exportação' : 'Último backup'} ${backup.age}`,
-            short: `Backup ${backup.age}`,
-            warn: !!hasData && backup.days > backup.staleAfter,
-          };
+          ? { long: 'Sem backup ainda', short: 'Sem backup' }
+          : { long: 'Dados neste dispositivo', short: 'Neste dispositivo' }
+        : backup.download
+          ? { long: `Última exportação ${backup.age}`, short: `Exportação ${backup.age}` }
+          : { long: `Último backup ${backup.age}`, short: `Backup ${backup.age}` };
+    const added =
+      backup.days !== null && newFiles > 0
+        ? ` · ${newFiles === 1 ? '1 arquivo novo' : `${newFiles} arquivos novos`}`
+        : '';
+    return {
+      short: text.short,
+      long: text.long + added,
+      warn,
+      label: `${text.long}${added}${warn ? '. Hora de fazer um backup' : ''}. Abrir Preferências e dados`,
+    };
+  })();
   return (
     <div className="topbar-status">
       {captureText && !capturesShown && (
@@ -228,7 +246,7 @@ export function TopbarStatus({
         >
           <AlertTriangle size={14} aria-hidden="true" />
           <span className="status-long">{captureText}</span>
-          <span className="status-short">{captures}</span>
+          <span className="status-short">{captures === 1 ? '1 gravação' : `${captures} gravações`}</span>
         </button>
       )}
       {!online && (
@@ -241,7 +259,7 @@ export function TopbarStatus({
         <button
           onClick={onOpenSettings}
           className={`storage-indicator backup-pill${status.warn ? ' stale' : ''}`}
-          aria-label={`${status.long}. Abrir Preferências e dados`}
+          aria-label={status.label}
         >
           {status.warn ? (
             <AlertTriangle size={14} aria-hidden="true" />

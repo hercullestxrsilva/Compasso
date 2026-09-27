@@ -31,6 +31,7 @@ import {
   describeUnreadable,
   exportRoom,
   formatBytes,
+  isBackupStale,
   lastBackupAt,
   lastBackupHow,
   makeBackupZip,
@@ -435,7 +436,7 @@ export default function Settings({
         since.files ? count(since.files, 'arquivo novo', 'arquivos novos') : '',
       ].filter(Boolean)
     : [];
-  const stale = hasData(library) && (days === null || days > BACKUP_STALE_DAYS || (since?.files ?? 0) > 0);
+  const stale = isBackupStale(hasData(library), days, since?.files);
   const cloudTooBig = libraryBytes !== undefined && libraryBytes > CLOUD_BACKUP_LIMIT;
   return (
     <>

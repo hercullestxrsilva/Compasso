@@ -9,6 +9,7 @@ import {
   type ErrorInfo,
   type ReactNode,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   LayoutDashboard,
@@ -27,17 +28,21 @@ import {
 } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import { Library, PieceForm } from './components/Library';
-import { ConfirmProvider, useConfirm, type Notify, type NotifyTone } from './components/common';
+import { ConfirmProvider, Modal, useTopModal, type Notify, type NotifyTone } from './components/common';
 import { TopbarActivity, TopbarStatus, activityHead, byUrgency } from './components/Topbar';
 import { db } from './db';
-import { getActivities, useActivities } from './activity';
+import { getActivities, useActivities, type Activity } from './activity';
+import { getUnsaved, type UnsavedWork } from './unsaved';
 import { applyTheme } from './theme';
 import {
   documentTitle,
   formatRoute,
+  isStartAddress,
   isView,
   pageKey,
   parseRoute,
+  resumeRecord,
+  resumeRoute,
   sameRoute,
   type ProgressTab,
   type Route,
@@ -69,6 +74,10 @@ const nav: readonly (readonly [View, string, typeof LayoutDashboard])[] = [
 ];
 const CAPTURES_ANCHOR = 'gravacoes-recuperaveis';
 const MAX_TOASTS = 3;
+/** Where the last screen is saved, so the home-screen app reopens it after iPadOS closes it. */
+const RESUME_KEY = 'compasso:lastRoute';
+/** How long "Encerrar e sair" waits for a recording or a session to be saved before leaving anyway. */
+const STOP_TIMEOUT = 15000;
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: boolean }> {
   state = { error: false };
@@ -115,7 +124,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number)
     return () => clearTimeout(timer);
   }, [toast.id, toast.tone, onDismiss]);
   return (
-    <div className={`toast ${toast.tone}`} role={toast.tone === 'error' ? 'alert' : undefined}>
+    <div className={`toast ${toast.tone}`}>
       {toast.tone === 'error' ? (
         <AlertTriangle size={18} aria-hidden="true" />
       ) : toast.tone === 'info' ? (
@@ -136,35 +145,77 @@ const stoppable = () =>
     .filter(a => a.stop)
     .sort(byUrgency);
 
-/** Live list of what would stop, inside the "leave?" dialog: the clock keeps running while it is open. */
-function LeaveMessage() {
+/** Stops each activity in turn (the recording first), waiting until what it captured is saved. */
+async function stopAll(list: readonly Activity[]) {
+  for (const activity of list)
+    try {
+      await activity.stop?.();
+    } catch (e) {
+      console.error(e);
+    }
+  return true;
+}
+
+interface LeaveAsk {
+  /** The navigation that asked (see navSeq). */
+  id: number;
+  title: string;
+  /** What leaving stops; empty when it only discards unsaved work. */
+  kinds: readonly Activity['kind'][];
+  unsaved: readonly UnsavedWork[];
+  /** Leaving was chosen and the recording or session is being saved. */
+  busy: boolean;
+}
+
+/** The text of the "leave?" dialog. The list is live: the clock keeps running while it is open. */
+function LeaveMessage({ ask }: { ask: LeaveAsk }) {
   const running = useActivities()
     .filter(a => a.stop)
     .sort(byUrgency);
   const recording = running.some(a => a.kind === 'recording'),
     practice = running.some(a => a.kind === 'practice');
+  const savesRecording = ask.kinds.includes('recording'),
+    savesPractice = ask.kinds.includes('practice');
   return (
     // Focus starts here, not on "Encerrar e sair", so a stray Enter does not end a lesson recording.
     <div className="leave-message" tabIndex={-1} data-autofocus>
-      {running.length > 0 && (
-        <ul>
-          {running.map(a => (
-            <li key={`${a.kind}:${a.label}`}>
-              <strong>{a.label}</strong>
-              {a.detail ? ` · ${a.detail}` : ''}
-            </li>
+      {ask.busy ? (
+        <p role="status">
+          {savesRecording && savesPractice
+            ? 'Salvando a gravação e a sessão…'
+            : savesRecording
+              ? 'Salvando a gravação…'
+              : 'Salvando a sessão…'}{' '}
+          Você segue assim que terminar.
+        </p>
+      ) : (
+        <>
+          {running.length > 0 && (
+            <ul>
+              {running.map(a => (
+                <li key={`${a.kind}:${a.label}`}>
+                  <strong>{a.label}</strong>
+                  {a.detail ? ` · ${a.detail}` : ''}
+                </li>
+              ))}
+            </ul>
+          )}
+          {(running.length > 0 || !ask.unsaved.length) && (
+            <p>
+              {recording && practice
+                ? 'Para sair desta tela, a gravação e a prática são encerradas. O áudio e a sessão ficam salvos.'
+                : recording
+                  ? 'Para sair desta tela, a gravação é encerrada. O áudio gravado até agora fica salvo.'
+                  : practice
+                    ? 'Para sair desta tela, a prática é encerrada. A sessão fica salva e você pode avaliá-la antes de seguir.'
+                    : 'A atividade já terminou. Você pode sair.'}
+            </p>
+          )}
+          {ask.unsaved.map(work => (
+            <p key={work.message}>{work.message}</p>
           ))}
-        </ul>
+        </>
       )}
-      <p>
-        {recording && practice
-          ? 'Para sair desta tela, a gravação e a prática são encerradas. O áudio e a sessão ficam salvos.'
-          : recording
-            ? 'Para sair desta tela, a gravação é encerrada. O áudio gravado até agora fica salvo.'
-            : practice
-              ? 'Para sair desta tela, a prática é encerrada. A sessão fica salva e você pode avaliá-la antes de seguir.'
-              : 'A atividade já terminou. Você pode sair.'}
-      </p>
     </div>
   );
 }
@@ -238,12 +289,77 @@ function settleView(main: HTMLElement, change: PageChange) {
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const openDialogs = () => new Set(document.querySelectorAll('dialog[open]'));
+/** Closes a dialog the way Esc or its X would, so its own "discard?" question still runs. */
+const cancelDialog = (dialog: Element) => dialog.dispatchEvent(new Event('cancel', { cancelable: true }));
+
+interface HistoryState {
+  /** Scroll position on that screen, restored by Back. */
+  y?: number;
+  /** Address of the previous entry when the app pushed this one: back links then go back instead. */
+  prev?: string;
+}
+const historyState = () => (window.history.state ?? {}) as HistoryState;
 function replaceAddress(url: string, state: unknown = window.history.state) {
   try {
     if (url !== window.location.hash) window.history.replaceState(state, '', url);
   } catch {
     /* Safari limits history updates per second; the screen still changes. */
   }
+}
+/** Back or Forward moved the address but the screen stays: make its address the current entry again. */
+function keepAddress(route: Route) {
+  const url = formatRoute(route);
+  if (url !== window.location.hash)
+    try {
+      // The entry Back reached is now the previous one.
+      window.history.pushState(
+        { y: window.scrollY, prev: window.location.hash } satisfies HistoryState,
+        '',
+        url,
+      );
+    } catch {
+      /* The address shows the other screen until the next navigation. */
+    }
+}
+
+function isStandalone() {
+  try {
+    return (
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (navigator as Navigator & { standalone?: boolean }).standalone === true
+    );
+  } catch {
+    return false;
+  }
+}
+/**
+ * The screen to open: the address, or, when the home-screen app relaunches at its start address (iPadOS
+ * closes it in the background), the screen it showed in the last hours.
+ */
+function initialRoute(): Route {
+  const hash = window.location.hash;
+  if (isStartAddress(hash) && isStandalone())
+    try {
+      const resumed = resumeRoute(localStorage.getItem(RESUME_KEY));
+      if (resumed) return resumed;
+    } catch {
+      /* Storage blocked: open Hoje. */
+    }
+  return parseRoute(hash);
+}
+function rememberRoute(route: Route) {
+  try {
+    localStorage.setItem(RESUME_KEY, resumeRecord(route));
+  } catch {
+    /* Private mode: nothing to reopen next time. */
+  }
+}
+/** Focuses the screen's main heading without scrolling, so screen readers announce where the reader is. */
+function focusHeading(main: HTMLElement | null) {
+  const heading = main?.querySelector<HTMLElement>('h1') ?? main;
+  if (!heading) return;
+  if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
+  heading.focus({ preventScroll: true });
 }
 
 export default function App() {
@@ -256,17 +372,34 @@ export default function App() {
   );
 }
 
+interface LeaveOptions {
+  /** From Back/Forward: the address already shows `next`. */
+  pop?: boolean;
+  /** The screen itself already asked (e.g. a lesson's own back link): stop what runs without asking again. */
+  confirmed?: boolean;
+  /** Replace the current entry (it shows something that no longer exists). */
+  replace?: boolean;
+  restoreY?: number;
+  anchor?: string;
+}
+
 function Shell() {
-  const confirm = useConfirm();
-  const [route, setRoute] = useState<Route>(() => parseRoute(window.location.hash)),
+  const [route, setRoute] = useState<Route>(initialRoute),
     [progressMount, setProgressMount] = useState(0),
     [adding, setAdding] = useState(false),
     [mobile, setMobile] = useState(false),
     [narrow, setNarrow] = useState(() => window.matchMedia('(max-width:700px)').matches),
     [toasts, setToasts] = useState<Toast[]>([]),
+    [leaveAsk, setLeaveAsk] = useState<LeaveAsk | null>(null),
     [online, setOnline] = useState(navigator.onLine);
   const routeRef = useRef(route),
     navSeq = useRef(0),
+    leaveAnswer = useRef<((ok: boolean) => void) | null>(null),
+    upPending = useRef<{ url: string; confirmed: boolean } | null>(null),
+    // The lesson its own back link is leaving (maybe just deleted): no "no longer exists" notice for it.
+    leavingLesson = useRef<string | null>(null),
+    // The drawer closed around its focused item: the page heading takes the focus once the page is not inert.
+    focusPage = useRef(false),
     pendingPage = useRef<PageChange | null>(null),
     cancelSettle = useRef<() => void>(() => {}),
     lastPractice = useRef(route.view === 'practice' ? route.target : undefined),
@@ -274,6 +407,8 @@ function Shell() {
   const mainRef = useRef<HTMLElement>(null),
     menuButton = useRef<HTMLButtonElement>(null),
     sidebarRef = useRef<HTMLElement>(null);
+  // Outside an open modal everything is inert and hidden from screen readers: notices go inside the top one.
+  const topModal = useTopModal();
 
   useEffect(() => {
     const query = window.matchMedia('(max-width:700px)');
@@ -321,23 +456,28 @@ function Shell() {
   const commit = useCallback(
     (
       next: Route,
-      mode: 'push' | 'replace',
+      mode: 'push' | 'replace' | 'pop',
       options: { restoreY?: number; anchor?: string; fromProgress?: boolean } = {},
     ) => {
       const current = routeRef.current;
-      const url = formatRoute(next);
-      if (mode === 'push' && url !== window.location.hash)
-        try {
-          // Remember where the reader was on this screen, for the Back gesture.
-          window.history.replaceState({ ...(window.history.state ?? {}), y: window.scrollY }, '');
-          window.history.pushState({ y: 0 }, '', url);
-        } catch {
-          /* Safari limits history updates per second; the screen still changes. */
-        }
-      else replaceAddress(url);
+      const url = formatRoute(next),
+        here = formatRoute(current);
+      if (mode === 'push') {
+        if (url !== window.location.hash)
+          try {
+            // Remember where the reader was on this screen, for the Back gesture.
+            window.history.replaceState({ ...historyState(), y: window.scrollY }, '');
+            window.history.pushState({ y: 0, prev: here } satisfies HistoryState, '', url);
+          } catch {
+            /* Safari limits history updates per second; the screen still changes. */
+          }
+      } else if (mode === 'pop' || window.location.hash === here) replaceAddress(url);
+      // Otherwise ('replace' while Back waits for an answer) the address shows where Back goes: leave it.
       routeRef.current = next;
+      leavingLesson.current = null;
       setRoute(next);
       setMobile(false);
+      rememberRoute(next);
       if (next.view === 'practice') lastPractice.current = next.target;
       // Evolução reads its tab when it mounts; a tab chosen from outside (Back, a link) remounts it.
       if (
@@ -347,7 +487,12 @@ function Shell() {
         !options.fromProgress
       )
         setProgressMount(n => n + 1);
-      if (pageKey(next) !== pageKey(current) || options.anchor)
+      const newPage = pageKey(next) !== pageKey(current);
+      // A question asked on the screen being left must not stay open over the next one.
+      if (newPage)
+        for (const dialog of openDialogs())
+          if (dialog.querySelector('.confirm-message')) cancelDialog(dialog);
+      if (newPage || options.anchor)
         pendingPage.current = {
           restoreY: options.restoreY,
           anchor: options.anchor,
@@ -357,79 +502,139 @@ function Shell() {
     [],
   );
 
+  const askLeave = useCallback(
+    (ask: LeaveAsk) =>
+      new Promise<boolean>(resolve => {
+        leaveAnswer.current?.(false);
+        leaveAnswer.current = resolve;
+        setLeaveAsk(ask);
+      }),
+    [],
+  );
+  const answerLeave = (ok: boolean) => {
+    const resolve = leaveAnswer.current;
+    leaveAnswer.current = null;
+    if (!ok) setLeaveAsk(null);
+    resolve?.(ok);
+  };
+
   /**
-   * Leaves the current screen. While a recording or a practice runs, asks first; "Encerrar e sair" stops it,
-   * waits until the file or the session is saved (and the practice rating answered, when it opens), then
-   * navigates. 'pop' comes from Back/Forward (the address already changed); 'confirmed' means the screen
-   * itself already asked.
+   * Leaves the current screen. While a recording or a practice runs, or the screen has unsaved work, asks first;
+   * "Encerrar e sair" stops what runs, waits until the file or the session is saved (and the practice rating
+   * answered, when it opens), then navigates.
    */
   const leave = useCallback(
-    async (
-      next: Route,
-      how: 'push' | 'pop' | 'confirmed' = 'push',
-      options: { restoreY?: number; anchor?: string } = {},
-    ) => {
-      const seq = ++navSeq.current;
-      if (how !== 'pop' && sameRoute(next, routeRef.current) && !options.anchor) {
+    async (next: Route, how: LeaveOptions = {}) => {
+      if (!how.pop && !how.anchor && sameRoute(next, routeRef.current)) {
+        // The item of the screen you are on brings you to its top.
+        const fromDrawer = !!sidebarRef.current?.contains(document.activeElement);
         setMobile(false);
         window.scrollTo({ top: 0 });
+        if (fromDrawer && window.matchMedia('(max-width:700px)').matches) focusPage.current = true;
         return;
       }
+      const seq = ++navSeq.current;
+      const latest = () => seq === navSeq.current;
       let blocking = stoppable();
-      if (blocking.length && how !== 'confirmed') {
-        const ok = await confirm({
-          title: `${activityHead(blocking[0])} em andamento`,
-          message: <LeaveMessage />,
-          confirmLabel: 'Encerrar e sair',
-          cancelLabel: 'Continuar aqui',
-        });
-        if (seq !== navSeq.current) return;
-        if (!ok) {
-          // Back already moved the address; put back the screen that stays.
-          if (how === 'pop')
-            try {
-              window.history.pushState({ y: window.scrollY }, '', formatRoute(routeRef.current));
-            } catch {
-              /* The address shows the other screen until the next navigation. */
-            }
-          return;
+      const unsaved = how.confirmed ? [] : getUnsaved();
+      const title = blocking.length
+        ? `${activityHead(blocking[0])} em andamento`
+        : (unsaved[0]?.title ?? 'Sair desta tela?');
+      try {
+        if ((blocking.length && !how.confirmed) || unsaved.length) {
+          const kinds = blocking.map(a => a.kind);
+          const ok = await askLeave({ id: seq, title, kinds, unsaved, busy: false });
+          if (!latest()) return;
+          if (!ok) {
+            // Back already moved the address: put back the screen that stays.
+            if (how.pop) keepAddress(routeRef.current);
+            return;
+          }
+          blocking = stoppable();
         }
-        blocking = stoppable();
-      }
-      if (blocking.length) {
-        const before = openDialogs();
-        for (const activity of blocking)
-          try {
-            await activity.stop?.();
-          } catch (e) {
-            console.error(e);
-          }
-        // Ending a practice opens "Como foi a prática?": leave once it has been answered.
-        if (blocking.some(a => a.kind === 'practice'))
-          for (let i = 0; i < 8 && seq === navSeq.current; i++) {
-            const opened = [...openDialogs()].find(d => !before.has(d)) as HTMLDialogElement | undefined;
-            if (opened) {
-              while (seq === navSeq.current && opened.isConnected && opened.open) await wait(200);
-              break;
+        if (blocking.length) {
+          const kinds = blocking.map(a => a.kind);
+          setLeaveAsk({ id: seq, title, kinds, unsaved: [], busy: true });
+          const before = openDialogs();
+          const saved = await Promise.race([stopAll(blocking), wait(STOP_TIMEOUT).then(() => false)]);
+          setLeaveAsk(ask => (ask?.id === seq ? null : ask));
+          if (!saved)
+            notify(
+              kinds.includes('recording')
+                ? 'A gravação ainda está sendo salva. Se ela não aparecer, recupere-a em Preferências e dados.'
+                : 'A sessão ainda está sendo salva.',
+              'info',
+            );
+          if (!latest()) return;
+          // Ending a practice opens "Como foi a prática?": leave once it has been answered.
+          if (kinds.includes('practice'))
+            for (let i = 0; i < 8 && latest(); i++) {
+              const opened = [...openDialogs()].find(
+                d => !before.has(d) && !d.querySelector('.leave-message'),
+              ) as HTMLDialogElement | undefined;
+              if (opened) {
+                while (latest() && opened.isConnected && opened.open) await wait(200);
+                break;
+              }
+              await wait(50);
             }
-            await wait(50);
-          }
-        if (seq !== navSeq.current) return;
+          if (!latest()) return;
+        }
+        commit(next, how.pop ? 'pop' : how.replace ? 'replace' : 'push', how);
+      } finally {
+        setLeaveAsk(ask => (ask?.id === seq ? null : ask));
       }
-      commit(next, how === 'pop' ? 'replace' : 'push', options);
     },
-    [commit, confirm],
+    [askLeave, commit, notify],
   );
   const navigate = useCallback((next: Route) => void leave(next), [leave]);
+
+  /**
+   * Back links ("Todas as aulas", "Repertório"): when that list is the previous entry, go back to it, so history
+   * does not grow and Back afterwards does not reopen what was just left (or deleted).
+   */
+  const goUp = useCallback(
+    (next: Route, { confirmed = false, gone = false } = {}) => {
+      const url = formatRoute(next);
+      if (historyState().prev !== url || window.location.hash !== formatRoute(routeRef.current))
+        // Opened from elsewhere: a deleted item's entry gives way to the list instead of staying behind it.
+        return void leave(next, { confirmed, replace: gone });
+      const token = { url, confirmed };
+      upPending.current = token;
+      window.history.back();
+      // Should the browser not go back, navigate forward instead.
+      window.setTimeout(() => {
+        if (upPending.current !== token) return;
+        upPending.current = null;
+        void leave(next, { confirmed });
+      }, 1000);
+    },
+    [leave],
+  );
 
   useEffect(() => {
     // Keep the address canonical from the start ("#/hoje" rather than nothing or an old link).
     replaceAddress(formatRoute(routeRef.current));
+    rememberRoute(routeRef.current);
     const onPop = (e: PopStateEvent) => {
       const next = parseRoute(window.location.hash);
+      const up = upPending.current;
+      upPending.current = null;
+      const upward = !!up && up.url === formatRoute(next);
+      const dialogs = document.querySelectorAll('dialog[open]');
+      if (!upward && dialogs.length) {
+        // Back (Safari's edge swipe) closes the dialog on top instead of changing the screen under it.
+        keepAddress(routeRef.current);
+        cancelDialog(dialogs[dialogs.length - 1]);
+        return;
+      }
       if (sameRoute(next, routeRef.current)) return replaceAddress(formatRoute(next), e.state);
-      const y = (e.state as { y?: unknown } | null)?.y;
-      void leave(next, 'pop', { restoreY: typeof y === 'number' ? y : undefined });
+      const y = (e.state as HistoryState | null)?.y;
+      void leave(next, {
+        pop: true,
+        confirmed: upward && up?.confirmed,
+        restoreY: typeof y === 'number' ? y : undefined,
+      });
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
@@ -471,6 +676,7 @@ function Shell() {
   }, [pieceInfo, commit, notify]);
   useEffect(() => {
     if (!lessonInfo || lessonInfo.exists || routeRef.current.lessonId !== lessonInfo.id) return;
+    if (leavingLesson.current === lessonInfo.id) return;
     commit({ view: 'lessons' }, 'replace');
     notify('Esta aula não está mais no seu caderno.', 'info');
   }, [lessonInfo, commit, notify]);
@@ -507,6 +713,8 @@ function Shell() {
   }, []);
 
   useEffect(() => {
+    if (!mobile && focusPage.current) focusHeading(mainRef.current);
+    focusPage.current = false;
     if (!mobile) return;
     sidebarRef.current?.querySelector<HTMLElement>('nav button')?.focus({ preventScroll: true });
     const onKey = (e: KeyboardEvent) => {
@@ -537,10 +745,20 @@ function Shell() {
     [commit],
   );
   const selectLesson = useCallback(
-    // Leaving an open lesson asks on its own screen first (recording, unsaved suggestions).
-    (id: string) =>
-      void leave(id ? { view: 'lessons', lessonId: id } : { view: 'lessons' }, id ? 'push' : 'confirmed'),
-    [leave],
+    (id: string) => {
+      if (id) return navigate({ view: 'lessons', lessonId: id });
+      // Leaving an open lesson asks on its own screen first (recording, unsaved suggestions).
+      const open = routeRef.current.lessonId;
+      const list: Route = { view: 'lessons' };
+      leavingLesson.current = open ?? null;
+      if (!open || historyState().prev === formatRoute(list)) return goUp(list, { confirmed: true });
+      // Opened from elsewhere (Hoje, a link): once deleted, its entry gives way to the list.
+      db.lessons.get(open).then(
+        lesson => goUp(list, { confirmed: true, gone: !lesson }),
+        () => goUp(list, { confirmed: true }),
+      );
+    },
+    [navigate, goUp],
   );
   const changeProgressTab = useCallback(
     (tab: ProgressTab) => {
@@ -551,6 +769,8 @@ function Shell() {
   );
 
   const onSettings = route.view === 'settings';
+  const errors = toasts.filter(t => t.tone === 'error'),
+    notes = toasts.filter(t => t.tone !== 'error');
   return (
     <div className="app-shell">
       <a
@@ -559,11 +779,7 @@ function Shell() {
         onClick={e => {
           // "#conteudo" would be read as a route: move the focus instead.
           e.preventDefault();
-          const main = mainRef.current;
-          const heading = main?.querySelector<HTMLElement>('h1') ?? main;
-          if (!heading) return;
-          if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
-          heading.focus();
+          focusHeading(mainRef.current);
         }}
       >
         Pular para o conteúdo
@@ -655,13 +871,13 @@ function Shell() {
       </aside>
       <main className="main-content" id="conteudo" ref={mainRef} inert={narrow && mobile}>
         <div className="topbar">
-          <TopbarActivity routeRef={routeRef} onNavigate={navigate} />
+          <TopbarActivity />
           <TopbarStatus
             online={online}
             // Both screens already list the interrupted recordings.
             capturesShown={onSettings || (route.view === 'lessons' && !route.lessonId)}
             onOpenSettings={() => goView('settings')}
-            onOpenCaptures={() => void leave({ view: 'settings' }, 'push', { anchor: CAPTURES_ANCHOR })}
+            onOpenCaptures={() => void leave({ view: 'settings' }, { anchor: CAPTURES_ANCHOR })}
           />
         </div>
         <ErrorBoundary key={pageKey(route)}>
@@ -683,7 +899,7 @@ function Shell() {
                 <PieceDetail
                   key={route.pieceId}
                   id={route.pieceId}
-                  onBack={() => navigate({ view: 'library' })}
+                  onBack={() => goUp({ view: 'library' })}
                   onPractice={practice}
                   notify={notify}
                 />
@@ -722,11 +938,56 @@ function Shell() {
           }}
         />
       )}
-      <div className="toast-stack" aria-live="polite">
-        {toasts.map(t => (
-          <ToastItem key={t.id} toast={t} onDismiss={dismissToast} />
-        ))}
-      </div>
+      {leaveAsk && (
+        <Modal
+          title={leaveAsk.title}
+          onClose={() => {
+            if (!leaveAsk.busy) answerLeave(false);
+          }}
+        >
+          <LeaveMessage ask={leaveAsk} />
+          <footer className="modal-actions">
+            <button
+              type="button"
+              className="btn secondary"
+              aria-disabled={leaveAsk.busy || undefined}
+              onClick={() => {
+                if (!leaveAsk.busy) answerLeave(false);
+              }}
+            >
+              Continuar aqui
+            </button>
+            <button
+              type="button"
+              className={`btn${leaveAsk.kinds.length ? '' : ' danger'}`}
+              aria-disabled={leaveAsk.busy || undefined}
+              onClick={() => {
+                if (!leaveAsk.busy) answerLeave(true);
+              }}
+            >
+              {leaveAsk.busy ? 'Salvando…' : leaveAsk.kinds.length ? 'Encerrar e sair' : 'Sair sem guardar'}
+            </button>
+          </footer>
+        </Modal>
+      )}
+      {(() => {
+        // Errors are announced at once, the rest politely; each group is a live region that stays mounted.
+        const stack = (
+          <div className="toast-stack">
+            <div className="toast-group" aria-live="polite">
+              {notes.map(t => (
+                <ToastItem key={t.id} toast={t} onDismiss={dismissToast} />
+              ))}
+            </div>
+            <div className="toast-group" aria-live="assertive">
+              {errors.map(t => (
+                <ToastItem key={t.id} toast={t} onDismiss={dismissToast} />
+              ))}
+            </div>
+          </div>
+        );
+        return topModal ? createPortal(stack, topModal) : stack;
+      })()}
     </div>
   );
 }
