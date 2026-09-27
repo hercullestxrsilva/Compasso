@@ -379,13 +379,23 @@ function TempoPanel({
     return (
       <section className="panel tempo-panel">
         <div className="section-heading">
-          <h2>Evolução de {segment?.title ?? 'trecho'}</h2>
-          <span className="hint">
-            {summary.firstBpm !== null && summary.lastBpm !== null
-              ? `${summary.firstBpm} → ${summary.lastBpm} BPM · `
-              : ''}
-            {formatMinutes(summary.seconds)} em {plural(summary.days.length, 'dia', 'dias')}
-          </span>
+          <div className="tempo-heading">
+            <h2>Evolução de {segment?.title ?? 'trecho'}</h2>
+            <p className="hint">
+              {[
+                pieces.find(p => p.id === segment?.pieceId)?.title,
+                summary.firstBpm !== null &&
+                  summary.lastBpm !== null &&
+                  `${summary.firstBpm} → ${summary.lastBpm} BPM`,
+                `${formatMinutes(summary.seconds)} em ${plural(summary.days.length, 'dia', 'dias')}`,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
+          </div>
+          <button className="link-btn" onClick={() => onFilter('')}>
+            Ver todos os trechos
+          </button>
         </div>
         <TempoChart days={summary.days} />
       </section>
@@ -496,13 +506,16 @@ function HistoryRow({
 
 /** Two takes of the same trecho side by side; the switch jumps to the same moment in the other take. */
 function ComparePanel({ takes, sessions }: { takes: Recording[]; sessions: Session[] }) {
-  const [aId, setAId] = useState(takes[0].id),
-    [bId, setBId] = useState(takes.at(-1)!.id),
+  // null means "the oldest" (A) and "the newest" (B): a new take moves B along, a deleted one never lingers.
+  const [aId, setAId] = useState<string | null>(null),
+    [bId, setBId] = useState<string | null>(null),
     [playing, setPlaying] = useState<'a' | 'b'>('a');
   const aRef = useRef<HTMLAudioElement>(null),
     bRef = useRef<HTMLAudioElement>(null);
-  const a = takes.find(t => t.id === aId) ?? takes[0],
-    b = takes.find(t => t.id === bId) ?? takes.at(-1)!;
+  const oldest = takes[0],
+    newest = takes.at(-1)!;
+  const a = takes.find(t => t.id === aId) ?? oldest,
+    b = takes.find(t => t.id === bId) ?? newest;
   const switchTake = () => {
     const [from, to] = playing === 'a' ? [aRef.current, bRef.current] : [bRef.current, aRef.current];
     if (!from || !to) return;
@@ -517,7 +530,6 @@ function ComparePanel({ takes, sessions }: { takes: Recording[]; sessions: Sessi
   const column = (
     label: 'A' | 'B',
     take: Recording,
-    value: string,
     onChange: (id: string) => void,
     ref: RefObject<HTMLAudioElement | null>,
     other: RefObject<HTMLAudioElement | null>,
@@ -526,7 +538,7 @@ function ComparePanel({ takes, sessions }: { takes: Recording[]; sessions: Sessi
     return (
       <div className={`compare-take ${playing === label.toLowerCase() ? 'current' : ''}`}>
         <Field label={`Tentativa ${label}`}>
-          <select value={value} onChange={e => onChange(e.target.value)}>
+          <select value={take.id} onChange={e => onChange(e.target.value)}>
             {takes.map(t => (
               <option key={t.id} value={t.id}>
                 {formatDate(t.createdAt)} · {t.title}
@@ -570,10 +582,51 @@ function ComparePanel({ takes, sessions }: { takes: Recording[]; sessions: Sessi
         </button>
       </div>
       <div className="compare-grid">
-        {column('A', a, aId, setAId, aRef, bRef)}
-        {column('B', b, bId, setBId, bRef, aRef)}
+        {column('A', a, id => setAId(id === oldest.id ? null : id), aRef, bRef)}
+        {column('B', b, id => setBId(id === newest.id ? null : id), bRef, aRef)}
       </div>
     </section>
+  );
+}
+
+/**
+ * Saves on blur or Enter. Typing a date fires a change per digit (year 0002, 0020...), and saving each one
+ * would move the card to another group and take the focus away mid-edit.
+ */
+function ReviewDateInput({
+  value,
+  onCommit,
+  notify,
+}: {
+  value: string;
+  onCommit: (date: string) => void;
+  notify: Notify;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = (input: HTMLInputElement) => {
+    if (draft === null) return;
+    setDraft(null);
+    const date = input.value;
+    // An incomplete date reads as '' with badInput set; only a fully emptied field clears the review.
+    if (input.validity.badInput || date === value) return;
+    if (date && (date < '2000-01-01' || date > '2099-12-31')) {
+      notify('Confira o ano da revisão: a data não foi alterada.', 'error');
+      return;
+    }
+    onCommit(date);
+  };
+  return (
+    <input
+      type="date"
+      min="2000-01-01"
+      max="2099-12-31"
+      value={draft ?? value}
+      onChange={e => setDraft(e.target.value)}
+      onBlur={e => commit(e.currentTarget)}
+      onKeyDown={e => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+      }}
+    />
   );
 }
 
@@ -616,8 +669,15 @@ function ReviewBoard({
   ).length;
   const shownScope = scope ?? (dueCount ? 'due' : 'all');
   const reschedule = async (s: Segment, reviewDate: string) => {
+    // Keep the view you are in: moving the last due card must not flip the board to "Todas" under your finger.
+    setScope(shownScope);
     try {
       await db.segments.update(s.id, { reviewDate });
+      notify(
+        reviewDate
+          ? `Revisão de “${s.title}” marcada para ${formatDate(reviewDate)}.`
+          : `Revisão de “${s.title}” ficou sem data.`,
+      );
     } catch (err) {
       notify(errorText(err), 'error');
     }
@@ -702,10 +762,10 @@ function ReviewBoard({
                         )}
                       </p>
                       <Field label="Próxima revisão">
-                        <input
-                          type="date"
+                        <ReviewDateInput
                           value={s.reviewDate}
-                          onChange={e => void reschedule(s, e.target.value)}
+                          onCommit={date => void reschedule(s, date)}
+                          notify={notify}
                         />
                       </Field>
                       <div
@@ -876,9 +936,14 @@ export default function Progress({
   const [link, setLink] = useState(''),
     [recordTitle, setRecordTitle] = useState(''),
     [recordBpm, setRecordBpm] = useState(''),
-    [recordHand, setRecordHand] = useState<Hand>('both'),
+    [recordHand, setRecordHand] = useState<Hand | ''>(''),
+    // Once you pick the trecho, BPM or hand yourself, the filter no longer suggests a link.
+    [linkTouched, setLinkTouched] = useState(false),
     [recording, setRecording] = useState(false);
-  const filtered = sessions.filter(s => !filter || s.segmentId === filter),
+  // The header follows the filter that is visible: the piece on the review tab, the trecho elsewhere.
+  const filtered = sessions.filter(s =>
+      tab === 'review' ? !pieceFilter || s.pieceId === pieceFilter : !filter || s.segmentId === filter,
+    ),
     minutes = Math.round(filtered.reduce((s, x) => s + x.activeSeconds, 0) / 60),
     days = new Set(filtered.map(s => localDay(new Date(s.startedAt)))).size;
   // The recorder saves after it stops; read the form as it is then, not as it was when recording began.
@@ -886,25 +951,43 @@ export default function Progress({
   useEffect(() => {
     form.current = { link, recordTitle, recordBpm, recordHand };
   });
-  useEffect(() => () => setActivity(RECORDING_ACTIVITY, null), []);
+  const busyRef = useRef(false);
   const onRecorderBusy = useCallback((busy: boolean) => {
+    busyRef.current = busy;
     setRecording(busy);
     setActivity(RECORDING_ACTIVITY, busy ? { kind: 'recording', label: 'Gravação de tentativa' } : null);
   }, []);
   const onRecorderElapsed = useCallback((seconds: number) => {
+    // A late tick must not register a recording that has already ended.
+    if (!busyRef.current) return;
     setActivity(RECORDING_ACTIVITY, {
       kind: 'recording',
       label: 'Gravação de tentativa',
       detail: clock(seconds),
     });
   }, []);
+  const onRecordingsTab = tab === 'recordings';
+  useEffect(() => {
+    if (!onRecordingsTab) return;
+    // The Recorder reports "busy" only from an effect, never when it unmounts: clear what it registered.
+    return () => onRecorderBusy(false);
+  }, [onRecordingsTab, onRecorderBusy]);
   const chooseLink = (id: string) => {
     setLink(id);
     const segment = segments.find(s => s.id === id);
-    if (!segment) return;
+    if (!segment) {
+      setRecordBpm('');
+      setRecordHand('');
+      return;
+    }
     const latest = sessions.find(s => s.segmentId === id && s.activeSeconds > 0);
     setRecordBpm(String((latest && reachedBpm(latest)) || segment.bpm));
     setRecordHand(latest?.hand ?? segment.hand);
+  };
+  const changeFilter = (id: string) => {
+    setFilter(id);
+    // The filter never clears or overrides a link: it only suggests one until you choose yourself.
+    if (id && !recording && !linkTouched) chooseLink(id);
   };
   const saveRecording = async (file: File) => {
     const { link: segmentId, recordTitle: title, recordBpm: bpmText, recordHand: hand } = form.current;
@@ -919,7 +1002,7 @@ export default function Progress({
         title: title.trim() || `${segment?.title ?? 'Minha prática'} · ${formatDate(now())}`,
         createdAt: now(),
         bpm: Number.isInteger(bpm) && bpm >= 20 && bpm <= 300 ? bpm : undefined,
-        hand,
+        hand: hand || undefined,
       });
     });
     notify(segment ? `Tentativa salva em “${segment.title}”.` : 'Tentativa salva.');
@@ -941,7 +1024,8 @@ export default function Progress({
           id: uid(),
           assetId: asset.id,
           title: `${source.title} (cópia reproduzível)`,
-          createdAt: now(),
+          // Same date as the take it copies: it is the same performance, not a new attempt.
+          createdAt: source.createdAt,
         });
       });
       notify(`Cópia reproduzível criada (${clock(repaired.duration)}). A gravação original foi preservada.`);
@@ -974,10 +1058,23 @@ export default function Progress({
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const comparable = filter ? [...takes].reverse() : [];
   const segmentTitle = (id?: string) => segments.find(s => s.id === id)?.title;
-  const segmentOptions: ReactNode = segments.map(s => (
-    <option key={s.id} value={s.id}>
-      {s.title}
-    </option>
+  // Grouped by piece: titles such as "Introdução" or "Seção A" repeat across pieces.
+  const byTitle = (a: { title: string }, b: { title: string }) =>
+    a.title.localeCompare(b.title, 'pt-BR', { numeric: true });
+  const segmentGroups = [
+    ...[...pieces]
+      .sort(byTitle)
+      .map(p => ({ id: p.id, label: p.title, items: segments.filter(s => s.pieceId === p.id) })),
+    { id: '', label: 'Sem peça', items: segments.filter(s => !pieces.some(p => p.id === s.pieceId)) },
+  ].filter(g => g.items.length);
+  const segmentOptions: ReactNode = segmentGroups.map(g => (
+    <optgroup key={g.id} label={g.label}>
+      {[...g.items].sort(byTitle).map(s => (
+        <option key={s.id} value={s.id}>
+          {s.title}
+        </option>
+      ))}
+    </optgroup>
   ));
   return (
     <>
@@ -1030,7 +1127,14 @@ export default function Progress({
               ['review', 'Revisões'],
             ] as const
           ).map(([k, v]) => (
-            <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>
+            <button
+              key={k}
+              className={tab === k ? 'active' : ''}
+              // Leaving the tab would unmount the Recorder and stop the take before it is saved.
+              disabled={recording && k !== tab}
+              aria-describedby={recording && k !== tab ? 'progress-tabs-locked' : undefined}
+              onClick={() => setTab(k)}
+            >
               {v}
             </button>
           ))}
@@ -1051,19 +1155,17 @@ export default function Progress({
               ))}
           </select>
         ) : (
-          <select
-            aria-label="Filtrar por trecho"
-            value={filter}
-            onChange={e => {
-              setFilter(e.target.value);
-              if (!recording) chooseLink(e.target.value);
-            }}
-          >
+          <select aria-label="Filtrar por trecho" value={filter} onChange={e => changeFilter(e.target.value)}>
             <option value="">Todos os trechos</option>
             {segmentOptions}
           </select>
         )}
       </div>
+      {recording && (
+        <p id="progress-tabs-locked" className="hint tabs-locked">
+          Termine a gravação para trocar de aba.
+        </p>
+      )}
       {tab === 'history' && (
         <>
           <TempoPanel
@@ -1071,10 +1173,7 @@ export default function Progress({
             segments={segments}
             pieces={pieces}
             filter={filter}
-            onFilter={id => {
-              setFilter(id);
-              if (!recording) chooseLink(id);
-            }}
+            onFilter={changeFilter}
           />
           {filtered.length ? (
             <div className="progress-list">
@@ -1087,6 +1186,16 @@ export default function Progress({
                 />
               ))}
             </div>
+          ) : filter ? (
+            <Empty
+              title="Nenhuma sessão deste trecho ainda"
+              text="Quando você praticar este trecho, o tempo e o andamento aparecem aqui."
+              action={
+                <button className="link-btn" onClick={() => changeFilter('')}>
+                  Ver todos os trechos
+                </button>
+              }
+            />
           ) : (
             <Empty
               title="Cada sessão conta uma história"
@@ -1109,7 +1218,14 @@ export default function Progress({
                 label="Vincular ao trecho"
                 hint={recording ? 'Termine a gravação para trocar o trecho.' : undefined}
               >
-                <select value={link} disabled={recording} onChange={e => chooseLink(e.target.value)}>
+                <select
+                  value={link}
+                  disabled={recording}
+                  onChange={e => {
+                    setLinkTouched(true);
+                    chooseLink(e.target.value);
+                  }}
+                >
                   <option value="">Nenhum (prática livre)</option>
                   {segmentOptions}
                 </select>
@@ -1122,12 +1238,22 @@ export default function Progress({
                     max={300}
                     inputMode="numeric"
                     value={recordBpm}
-                    onChange={e => setRecordBpm(e.target.value)}
+                    onChange={e => {
+                      setLinkTouched(true);
+                      setRecordBpm(e.target.value);
+                    }}
                     placeholder="Opcional"
                   />
                 </Field>
                 <Field label="Mão">
-                  <select value={recordHand} onChange={e => setRecordHand(e.target.value as Hand)}>
+                  <select
+                    value={recordHand}
+                    onChange={e => {
+                      setLinkTouched(true);
+                      setRecordHand(e.target.value as Hand | '');
+                    }}
+                  >
+                    <option value="">Não informada</option>
                     {Object.entries(hands).map(([k, v]) => (
                       <option key={k} value={k}>
                         {v}
