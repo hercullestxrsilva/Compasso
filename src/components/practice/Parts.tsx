@@ -99,7 +99,7 @@ export function RoutineTransition({
                 key={key}
                 type="button"
                 aria-pressed={run.last?.rating === key}
-                className={run.last?.rating === key ? 'selected' : ''}
+                className={`rating-${key}${run.last?.rating === key ? ' selected' : ''}`}
                 onClick={() => onRate(key)}
               >
                 {label}

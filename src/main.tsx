@@ -3,12 +3,15 @@ import ReactDOM from 'react-dom/client';
 // Global styles first, so the per-screen stylesheets imported by components can override them.
 import './styles.css';
 import App from './App';
+import { applyTheme } from './theme';
 import '@fontsource/dm-sans/latin-400.css';
 import '@fontsource/dm-sans/latin-500.css';
 import '@fontsource/dm-sans/latin-600.css';
 import '@fontsource/dm-sans/latin-700.css';
 import '@fontsource/instrument-serif/latin-400.css';
 import '@fontsource/instrument-serif/latin-400-italic.css';
+// index.html already applied the saved theme before the first paint; this keeps both in agreement.
+applyTheme();
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />

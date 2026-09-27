@@ -19,6 +19,7 @@ import {
 import { db } from '../db';
 import { localDay, formatDate, hands, uid, type Session } from '../domain';
 import { Badge, Empty, Field, Modal, errorText, type Notify } from './common';
+import { pieceTone } from './Library';
 import { buildDailyPlan, dueReviews, pickFocus, planToRoutine, reasonText } from '../practice/plan';
 import {
   goalProgress,
@@ -362,9 +363,9 @@ export default function Dashboard({
               </button>
             </div>
             {pieces.length ? (
-              pieces.slice(0, 4).map((p, i) => (
+              pieces.slice(0, 4).map(p => (
                 <button className="repertoire-row" key={p.id} onClick={() => onPiece(p.id)}>
-                  <div className={`mini-cover tone-${i % 4}`}>
+                  <div className={`mini-cover tone-${pieceTone(p.id)}`}>
                     <BookOpen size={25} strokeWidth={1} />
                   </div>
                   <div className="grow">

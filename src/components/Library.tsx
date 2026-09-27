@@ -7,6 +7,13 @@ import { Modal, Field, Empty, ErrorBox, Badge, errorText, useConfirm, type Notif
 import { forgetHistory } from '../annotation-history';
 import { forgetPieceView, titleFromFileName } from '../score-view';
 
+/** Cover tone (0–3) from the piece id: the same piece keeps its colour whatever the filter, order or screen. */
+export function pieceTone(id: string) {
+  let hash = 0;
+  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return hash % 4;
+}
+
 function scoreCount(count: number) {
   return count === 0 ? 'Sem partitura' : count === 1 ? '1 partitura' : `${count} partituras`;
 }
@@ -205,19 +212,18 @@ export function Library({ onOpen, notify }: { onOpen: (id: string) => void; noti
       </div>
       {filtered.length ? (
         <div className="piece-grid">
-          {filtered.map((piece, i) => (
+          {filtered.map(piece => (
             <article className="piece-card" key={piece.id}>
               <button
-                className={`piece-cover tone-${i % 4}`}
+                className={`piece-cover tone-${pieceTone(piece.id)}`}
                 onClick={() => onOpen(piece.id)}
                 // A larger target for touch only: the title below is the card's one stop for keyboard and
                 // screen readers.
                 tabIndex={-1}
                 aria-hidden="true"
               >
-                <span className="cover-label">PARTITURA · {String(i + 1).padStart(2, '0')}</span>
+                <span className="cover-label">PARTITURA</span>
                 <BookOpen size={36} strokeWidth={1} />
-                <span className="cover-composer">{piece.composer || 'Seu repertório'}</span>
                 <ArrowUpRight size={22} className="cover-arrow" />
               </button>
               <div className="piece-info">

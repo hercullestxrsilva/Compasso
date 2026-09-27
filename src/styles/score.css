@@ -1,6 +1,7 @@
 /*
- * Score viewer and piece detail. styles.css is loaded after component styles, so rules that change
- * existing classes are scoped under .score-viewer / .piece-detail to take precedence.
+ * Score viewer and piece detail. styles.css is imported first (main.tsx), so rules here override it at equal
+ * specificity. Colours come from the tokens in styles.css; the page itself and the marks drawn on it use the
+ * --paper-* tokens, which stay the same in the dark theme.
  */
 .score-viewer {
   container: score / inline-size;
@@ -14,16 +15,16 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 4px 8px;
-  padding: 6px 8px;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-1-5) var(--space-2);
   border-bottom: 1px solid var(--line);
-  background: #fcfefe;
+  background: var(--surface);
 }
 .score-toolset,
 .score-toolbar-end {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-0-5);
   min-width: 0;
 }
 .score-toolbar-end {
@@ -32,32 +33,33 @@
 .score-tool {
   min-width: 40px;
   height: 40px;
-  padding: 0 6px;
+  padding: 0 var(--space-1-5);
   display: inline-flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: var(--space-1);
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: transparent;
-  color: #3d575e;
-  font-size: 0.68rem;
+  color: var(--ink-muted);
+  font-size: var(--fs-micro);
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
+  transition: background-color 0.15s;
 }
-.score-tool:hover:not(:disabled) {
-  background: #e6eff0;
-}
-.score-tool.active,
-.score-tool.active:hover {
-  background: var(--green);
-  color: #fff;
-  box-shadow: inset 0 -3px 0 var(--gold);
+.score-tool.active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: inset 0 -3px 0 var(--tool-mark);
 }
 .score-tool.open {
-  background: #dfeced;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.score-tool:active:not(:disabled):not(.active) {
+  background: var(--surface-3);
 }
 .score-tool-label {
   display: none;
@@ -65,19 +67,19 @@
 .score-viewer .score-pager {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 .score-viewer .score-pager > span {
   min-width: 96px;
   text-align: center;
   white-space: nowrap;
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
   color: var(--ink);
 }
 .score-viewer .score-pager-top {
   display: none;
-  margin-right: 6px;
+  margin-right: var(--space-1-5);
 }
 .score-viewer .score-pager > .score-pager-short {
   min-width: 48px;
@@ -85,8 +87,8 @@
 .score-history {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding-left: 8px;
+  gap: var(--space-0-5);
+  padding-left: var(--space-2);
   border-left: 1px solid var(--line);
 }
 @container score (min-width: 620px) {
@@ -102,83 +104,100 @@
     display: flex;
   }
 }
+/* Portrait iPad Air/mini width: tools keep their names, "Mais" and "Tela cheia" go icon-only, so the
+   toolbar stays on one row. */
+@container score (min-width: 620px) and (max-width: 759px) {
+  .score-tool {
+    min-width: 48px;
+    padding: 0 var(--space-1);
+  }
+  .score-toolbar-end .score-tool-label {
+    display: none;
+  }
+}
+/* Narrower still, the named tools win over the top page arrows; the bottom bar keeps them. */
+@container score (min-width: 620px) and (max-width: 699px) {
+  .score-viewer .score-pager-top {
+    display: none;
+  }
+}
 
 /* "Mais" popover */
 .score-menu {
   position: absolute;
   top: calc(100% + 4px);
-  right: 8px;
+  right: var(--space-2);
   z-index: 20;
   width: min(330px, calc(100% - 16px));
   max-height: min(70dvh, 520px);
   overflow: auto;
   display: grid;
-  gap: 2px;
-  padding: 8px;
+  gap: var(--space-0-5);
+  padding: var(--space-2);
   border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--paper);
-  box-shadow: 0 14px 40px #102b3b33;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
   color: var(--ink);
 }
 .score-menu-item,
 .score-menu-check {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
   width: 100%;
-  min-height: 44px;
-  padding: 8px 10px;
+  min-height: var(--tap);
+  padding: var(--space-2) var(--space-3);
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: none;
   color: var(--ink);
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   text-align: left;
   cursor: pointer;
 }
-.score-menu-item:hover:not(:disabled),
-.score-menu-check:hover {
-  background: #eef4f5;
+.score-menu-item:active:not(:disabled),
+.score-menu-check:active {
+  background: var(--surface-3);
 }
 .score-menu-check input {
   width: 20px;
   height: 20px;
   flex-shrink: 0;
   margin: 0;
-  accent-color: var(--green);
+  accent-color: var(--accent);
 }
 .score-menu-check small {
   display: block;
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 0.74rem;
+  margin-top: var(--space-0-5);
+  color: var(--ink-muted);
+  font-size: var(--fs-xs);
 }
 .score-menu-group {
   margin: 0;
-  padding: 4px 0 0;
+  padding: var(--space-1) 0 0;
   border: 0;
   border-top: 1px solid var(--line);
 }
 .score-menu-group legend {
-  padding: 8px 10px 2px;
-  color: var(--muted);
-  font-size: 0.7rem;
+  padding: var(--space-2) var(--space-3) var(--space-0-5);
+  color: var(--ink-muted);
+  font-size: var(--fs-micro);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 .score-menu-hint {
   margin: 0;
-  padding: 8px 10px 4px;
+  padding: var(--space-2) var(--space-3) var(--space-1);
   border-top: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 0.75rem;
+  color: var(--ink-muted);
+  font-size: var(--fs-xs);
   line-height: 1.5;
 }
 .layer-dot {
-  width: 11px;
-  height: 11px;
+  width: 12px;
+  height: 12px;
   flex-shrink: 0;
   border-radius: 50%;
   background: var(--dot);
@@ -189,58 +208,62 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px 10px;
+  gap: var(--space-1-5) var(--space-3);
   min-height: 48px;
-  padding: 5px 10px;
+  padding: var(--space-1) var(--space-3);
   border-bottom: 1px solid var(--line);
-  background: #f4f8f8;
+  background: var(--surface-2);
   color: var(--ink);
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
 }
 .score-subgroup {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding-right: 8px;
+  gap: var(--space-0-5);
+  padding-right: var(--space-2);
   border-right: 1px solid var(--line);
 }
 .score-hint {
-  color: var(--muted);
-  font-size: 0.78rem;
+  color: var(--ink-muted);
+  font-size: var(--fs-sm);
 }
 .score-hint.strong {
   color: var(--ink);
   font-weight: 600;
 }
 .score-subbar .btn[aria-pressed='true'] {
-  border-color: var(--green);
-  background: var(--green);
-  color: #fff;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.score-subbar .btn.secondary[aria-pressed='true']:active:not(:disabled) {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
 }
 .score-warning {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  color: #8a5a14;
-  font-size: 0.78rem;
+  gap: var(--space-2);
+  color: var(--warning);
+  font-size: var(--fs-sm);
 }
 .score-viewer .score-subbar .link-btn {
   min-height: 36px;
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
 }
 .score-layer-select {
   height: 38px;
-  padding: 0 8px;
-  border: 1px solid #cbd9dc;
-  border-radius: 8px;
-  background: var(--paper);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
   color: var(--ink);
-  font-size: 0.82rem;
+  font-size: var(--fs-sm);
 }
 .score-swatches {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 .score-swatch {
   position: relative;
@@ -248,11 +271,16 @@
   height: 28px;
   flex-shrink: 0;
   padding: 0;
-  border: 2px solid #fff;
+  /* A paper-white ring: each colour is judged against the page it will be drawn on, in both themes
+     (the dark "Grafite" would vanish on the dark bar otherwise). */
+  border: 2px solid var(--paper-white);
   border-radius: 50%;
   background: var(--swatch);
-  box-shadow: 0 0 0 1px #b9cacd;
+  box-shadow: 0 0 0 1px var(--line-strong);
   cursor: pointer;
+}
+.score-swatch:active {
+  opacity: 0.7;
 }
 /* Larger hit area than the visible dot. */
 .score-swatch::before {
@@ -264,13 +292,14 @@
 .score-swatch-custom[data-active='true'] {
   box-shadow:
     0 0 0 2px var(--ink),
-    0 0 0 4px #fff;
+    0 0 0 4px var(--surface);
 }
+/* The rainbow shows the annotation colours, which are the same in both themes. */
 .score-swatch-custom {
   display: grid;
   place-items: center;
-  background: conic-gradient(#c0392b, #e0a100, #087e8b, #1f5fbf, #c0392b);
-  color: #fff;
+  background: var(--annotation-palette);
+  color: var(--paper-white);
 }
 .score-swatch-custom[data-active='true'] {
   background: var(--swatch);
@@ -283,17 +312,21 @@
   opacity: 0;
   cursor: pointer;
 }
+.score-swatch-custom:has(input:focus-visible) {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
 
 .score-notice {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px 10px;
-  padding: 8px 12px;
-  border-bottom: 1px solid #efdcb6;
-  background: #fdf6e8;
-  color: #5b4213;
-  font-size: 0.82rem;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--warning-line);
+  background: var(--warning-soft);
+  color: var(--ink);
+  font-size: var(--fs-sm);
 }
 .score-notice p {
   flex: 1 1 260px;
@@ -311,7 +344,7 @@
   overscroll-behavior: contain;
 }
 .score-viewer .annotation-selected {
-  filter: drop-shadow(0 0 3px #0e7f89aa);
+  filter: drop-shadow(0 0 3px var(--paper-focus));
 }
 .segment-mark {
   pointer-events: none;
@@ -322,71 +355,74 @@
   outline: none;
 }
 .segment-mark-box {
-  fill: #e8b469;
+  fill: var(--paper-mark);
   fill-opacity: 0.07;
-  stroke: #b27622;
+  stroke: var(--paper-mark-edge);
   stroke-opacity: 0.7;
 }
-.segment-mark.interactive:hover .segment-mark-box {
+.segment-mark.interactive:active .segment-mark-box {
   fill-opacity: 0.16;
 }
 /* The trecho opened with "Ver" or being practised. */
 .segment-mark.is-target .segment-mark-box {
-  fill: #e9af58;
+  fill: var(--paper-mark);
   fill-opacity: 0.12;
-  stroke: #bd8023;
+  stroke: var(--paper-mark-target);
   stroke-opacity: 1;
 }
 .segment-mark:focus-visible .segment-mark-box {
-  stroke: #0e7f89;
+  stroke: var(--paper-focus);
   stroke-opacity: 1;
   stroke-dasharray: none;
   fill-opacity: 0.16;
 }
 .segment-mark-label {
-  fill: #7a4f12;
-  font-family: 'DM Sans', system-ui, sans-serif;
+  fill: var(--paper-mark-label);
+  font-family: var(--font-sans);
   font-weight: 600;
   paint-order: stroke;
-  stroke: #fff;
+  stroke: var(--paper-white);
   stroke-linejoin: round;
 }
 
 /* Bottom bar: pages, fit and zoom (and the practice transport in full screen). */
 .score-viewer .score-bottom {
   flex-wrap: wrap;
-  gap: 6px 10px;
-  padding: 6px 10px;
+  gap: var(--space-1-5) var(--space-3);
+  padding: var(--space-1-5) var(--space-3);
 }
 .score-zoom {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   margin-left: auto;
 }
 .score-fit {
   height: 36px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 10px;
-  border: 1px solid #cbd9dc;
-  border-radius: 8px;
-  background: var(--paper);
+  gap: var(--space-1-5);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
   color: var(--ink);
-  font-size: 0.76rem;
+  font-size: var(--fs-xs);
   font-weight: 600;
   white-space: nowrap;
 }
 .score-fit.active {
-  border-color: var(--green);
-  background: #e3f1ee;
-  color: #0f5a5d;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.score-fit:active:not(:disabled) {
+  background: var(--surface-3);
 }
 .score-zoom-value {
   min-width: 44px;
   text-align: center;
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
 }
 @container score (max-width: 560px) {
@@ -415,15 +451,20 @@
   flex-shrink: 0;
 }
 .score-viewer.is-fullscreen .score-toolbar {
-  padding-top: max(6px, env(safe-area-inset-top));
-  padding-left: max(8px, env(safe-area-inset-left));
-  padding-right: max(8px, env(safe-area-inset-right));
+  padding-top: max(var(--space-1-5), env(safe-area-inset-top));
+  padding-left: max(var(--space-2), env(safe-area-inset-left));
+  padding-right: max(var(--space-2), env(safe-area-inset-right));
+}
+.score-viewer.is-fullscreen .score-subbar,
+.score-viewer.is-fullscreen .score-notice {
+  padding-left: max(var(--space-3), env(safe-area-inset-left));
+  padding-right: max(var(--space-3), env(safe-area-inset-right));
 }
 .score-viewer.is-fullscreen .score-bottom {
-  padding-bottom: max(6px, env(safe-area-inset-bottom));
-  padding-left: max(10px, env(safe-area-inset-left));
-  padding-right: max(10px, env(safe-area-inset-right));
-  background: #fff;
+  padding-bottom: max(var(--space-1-5), env(safe-area-inset-bottom));
+  padding-left: max(var(--space-3), env(safe-area-inset-left));
+  padding-right: max(var(--space-3), env(safe-area-inset-right));
+  background: var(--surface);
 }
 
 .score-sr-only {
@@ -438,16 +479,42 @@
   border: 0;
 }
 
+@media (hover: hover) {
+  .score-tool:hover:not(:disabled):not(.active) {
+    background: var(--surface-3);
+    color: var(--ink);
+  }
+  .score-tool.open:hover {
+    background: var(--accent-soft);
+  }
+  .score-menu-item:hover:not(:disabled),
+  .score-menu-check:hover {
+    background: var(--surface-2);
+  }
+  .segment-mark.interactive:hover .segment-mark-box {
+    fill-opacity: 0.16;
+  }
+  .score-fit:hover:not(:disabled):not(.active) {
+    background: var(--surface-2);
+  }
+  /* A pressed toggle keeps its pressed look under the pointer. */
+  .score-subbar .btn.secondary[aria-pressed='true']:hover {
+    border-color: var(--accent-strong);
+    background: var(--accent-strong);
+    color: var(--accent-ink);
+  }
+}
+
 @media (pointer: coarse) {
   .score-tool {
-    min-width: 44px;
-    height: 44px;
+    min-width: var(--tap);
+    height: var(--tap);
   }
   .score-viewer .icon-btn,
   .score-fit,
   .score-layer-select {
-    min-width: 44px;
-    height: 44px;
+    min-width: var(--tap);
+    height: var(--tap);
   }
   .score-swatch {
     width: 32px;
@@ -457,8 +524,15 @@
 @container score (min-width: 620px) {
   @media (pointer: coarse) {
     .score-tool {
-      min-width: 56px;
+      min-width: 48px;
       height: 52px;
+    }
+  }
+}
+@container score (min-width: 760px) {
+  @media (pointer: coarse) {
+    .score-tool {
+      min-width: 56px;
     }
   }
 }
@@ -468,12 +542,12 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px 16px;
-  margin-bottom: 16px;
+  gap: var(--space-1-5) var(--space-4);
+  margin-bottom: var(--space-4);
 }
 .piece-detail .piece-header .back-link {
   margin: 0;
-  min-height: 44px;
+  min-height: var(--tap);
 }
 .piece-header-main {
   flex: 1 1 260px;
@@ -481,38 +555,45 @@
 }
 .piece-header-main h1 {
   margin: 0;
-  font-size: 1.75rem;
-  line-height: 1.15;
+  font-size: var(--fs-2xl);
+  line-height: var(--lh-tight);
   overflow-wrap: anywhere;
 }
 .piece-header-main p {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
-  margin: 4px 0 0;
-  color: var(--muted);
-  font-size: 0.85rem;
+  gap: var(--space-2);
+  margin: var(--space-1) 0 0;
+  color: var(--ink-muted);
+  font-size: var(--fs-sm);
 }
 .piece-detail .score-card > .score-card-heading {
-  padding: 8px 12px;
+  flex-wrap: wrap;
+  row-gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
 }
-/* On a portrait tablet the score gets the full width; trechos, notes and tasks follow below it. */
-@media (max-width: 1100px) {
-  .piece-detail .study-layout {
-    grid-template-columns: minmax(0, 1fr);
+/* Phone: back and edit share the first row, the title takes the second. */
+@media (max-width: 700px) {
+  .piece-header > .btn {
+    order: 1;
+    margin-left: auto;
+  }
+  .piece-header-main {
+    order: 2;
+    flex-basis: 100%;
   }
 }
 .score-version {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
-  color: var(--green);
+  color: var(--accent);
 }
 .score-version h2 {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: var(--fs-md);
   color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -522,93 +603,68 @@
   min-width: 0;
   max-width: 100%;
   height: 38px;
-  padding: 0 8px;
-  border: 1px solid #cbd9dc;
-  border-radius: 8px;
-  background: var(--paper);
-  color: var(--ink);
-  font-size: 0.85rem;
+  padding: 0 var(--space-2);
+  font-size: var(--fs-sm);
 }
 .score-version .score-versions-button {
   flex-shrink: 0;
 }
 .piece-detail .score-import-big {
   min-height: 52px;
-  padding: 12px 20px;
-  font-size: 0.95rem;
+  padding: var(--space-3) var(--space-5);
+  font-size: var(--fs-md);
 }
 
 /* Segment cards and the action sheet opened from the score. */
 .piece-detail .segment-card.rated-difficult {
-  border-left: 4px solid #b5523b;
+  border-left: 4px solid var(--rating-difficult-edge);
 }
 .piece-detail .segment-card.rated-improving {
-  border-left: 4px solid #c3922b;
+  border-left: 4px solid var(--rating-improving-edge);
 }
 .piece-detail .segment-card.rated-comfortable {
-  border-left: 4px solid #2f8a63;
+  border-left: 4px solid var(--rating-comfortable-edge);
 }
 .segment-history {
-  margin: 0 0 12px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: #f4f8f8;
-  color: #3d565c;
-  font-size: 0.76rem;
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--ink-muted);
+  font-size: var(--fs-xs);
   line-height: 1.5;
 }
 .segment-history p {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 4px 8px;
+  gap: var(--space-1) var(--space-2);
   margin: 0;
 }
-.segment-history.unpracticed {
-  color: var(--muted);
-}
 .segment-history blockquote {
-  margin: 6px 0 2px;
-  padding-left: 8px;
-  border-left: 2px solid #bfd3d6;
+  margin: var(--space-1-5) 0 var(--space-0-5);
+  padding-left: var(--space-2);
+  border-left: 2px solid var(--line-strong);
   color: var(--ink);
   font-style: italic;
   white-space: pre-wrap;
-}
-.rating-chip {
-  padding: 1px 7px;
-  border-radius: 99px;
-  font-size: 0.7rem;
-  font-weight: 600;
-}
-.rating-chip.difficult {
-  background: #f7e3dd;
-  color: #8e3a26;
-}
-.rating-chip.improving {
-  background: #f6ecd6;
-  color: #7a5a14;
-}
-.rating-chip.comfortable {
-  background: #dff0e6;
-  color: #1f6a47;
 }
 .piece-detail .segment-delete {
   margin-left: auto;
 }
 .segment-sheet .segment-sheet-meta {
-  margin: -8px 0 10px;
-  color: var(--muted);
-  font-size: 0.85rem;
+  margin: calc(-1 * var(--space-2)) 0 var(--space-3);
+  color: var(--ink-muted);
+  font-size: var(--fs-sm);
 }
 .segment-sheet .segment-goal {
-  margin: 0 0 12px;
+  margin: 0 0 var(--space-3);
 }
 .segment-sheet-actions {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 16px;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
 }
 @media (max-width: 480px) {
   .segment-sheet-actions {
@@ -619,7 +675,7 @@
 /* Score versions */
 .version-list {
   display: grid;
-  gap: 6px;
+  gap: var(--space-1-5);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -627,15 +683,15 @@
 .version-list li {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   min-height: 56px;
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
 }
 .version-list li.current {
-  border-color: #9cc7c4;
-  background: #f3f9f8;
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 .version-info {
   flex: 1;
@@ -644,50 +700,44 @@
 .version-info strong {
   display: block;
   overflow-wrap: anywhere;
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
 }
 .version-info small {
   display: block;
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 0.75rem;
+  margin-top: var(--space-0-5);
+  color: var(--ink-muted);
+  font-size: var(--fs-xs);
 }
 .version-rename {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-1-5);
   width: 100%;
 }
 .version-rename input {
   flex: 1 1 200px;
   min-width: 0;
   height: 40px;
-  padding: 0 10px;
-  border: 1px solid #cbd9dc;
-  border-radius: 8px;
+  padding: 0 var(--space-3);
 }
 
 /* Tasks linked to a trecho */
 .task-form {
   display: grid;
-  gap: 6px;
-  margin-bottom: 8px;
+  gap: var(--space-1-5);
+  margin-bottom: var(--space-2);
 }
 .task-form select {
   height: 38px;
-  padding: 0 8px;
-  border: 1px solid #cbd9dc;
-  border-radius: 8px;
-  background: var(--paper);
-  color: var(--ink);
-  font-size: 0.8rem;
+  padding: 0 var(--space-2);
+  font-size: var(--fs-sm);
 }
 .piece-detail .task-row > div small {
   display: block;
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: 0.72rem;
+  margin-top: var(--space-1);
+  color: var(--ink-muted);
+  font-size: var(--fs-xs);
 }
 @media (pointer: coarse) {
   .score-viewer .btn.small,
@@ -700,20 +750,11 @@
   .score-version select,
   .task-form select,
   .version-rename input {
-    min-height: 44px;
+    min-height: var(--tap);
   }
   .piece-detail .icon-btn,
   .version-list .icon-btn {
-    width: 44px;
-    height: 44px;
-  }
-  /* The box stays small; the invisible area around it takes the tap. */
-  .piece-detail .check-button {
-    position: relative;
-  }
-  .piece-detail .check-button::before {
-    content: '';
-    position: absolute;
-    inset: -11px;
+    width: var(--tap);
+    height: var(--tap);
   }
 }

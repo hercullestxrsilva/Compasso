@@ -1,4 +1,4 @@
-/* Lessons, recorder and capture recovery. */
+/* Lessons, recorder and capture recovery. Colours are tokens from styles.css. */
 
 .lessons-sr-only {
   position: absolute;
@@ -13,7 +13,7 @@
 .recorder-options {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 16px;
+  gap: 0 var(--space-4);
 }
 .recorder-options .recorder-input {
   flex: 1 1 200px;
@@ -21,35 +21,32 @@
 
 /* Interrupted captures */
 .capture-recovery {
-  border: 1px solid var(--gold);
-  border-color: color-mix(in srgb, var(--gold) 45%, var(--paper));
-  background: var(--paper);
-  background: color-mix(in srgb, var(--gold) 9%, var(--paper));
-  border-radius: var(--radius);
-  padding: 18px 20px 8px;
-  margin-bottom: 23px;
+  border: 1px solid var(--warning-line);
+  background: var(--warning-soft);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5) var(--space-2);
+  margin-bottom: var(--space-6);
 }
 .capture-recovery.inline {
-  margin: 25px 0 0;
-  padding: 15px 16px 4px;
+  margin: var(--space-6) 0 0;
+  padding: var(--space-4) var(--space-4) var(--space-1);
 }
 .capture-recovery > h2,
 .capture-recovery > h3 {
-  font-size: 1rem;
-  margin: 0 0 4px;
+  font-size: var(--fs-md);
+  margin: 0 0 var(--space-1);
   color: var(--ink);
 }
 .capture-recovery > .hint {
-  margin: 0 0 6px;
+  margin: 0 0 var(--space-1-5);
 }
 .capture-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 16px;
-  padding: 12px 0;
-  border-top: 1px solid var(--line);
-  border-top-color: color-mix(in srgb, var(--gold) 28%, var(--paper));
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--warning-line);
 }
 .capture-info {
   flex: 1 1 220px;
@@ -57,16 +54,16 @@
 }
 .capture-info strong {
   display: block;
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--ink);
   overflow-wrap: anywhere;
 }
 .capture-info small {
   display: block;
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: 0.74rem;
+  margin-top: var(--space-1);
+  color: var(--ink-muted);
+  font-size: var(--fs-xs);
 }
 .capture-actions {
   flex: 1 1 auto;
@@ -75,18 +72,18 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .capture-actions select {
   flex: 1 1 160px;
   min-width: 0;
   max-width: 280px;
-  padding: 8px 9px;
-  font-size: 0.8rem;
+  padding: var(--space-2);
+  font-size: var(--fs-sm);
 }
 .capture-destination {
-  font-size: 0.74rem;
-  color: var(--muted);
+  font-size: var(--fs-xs);
+  color: var(--ink-muted);
 }
 .capture-recovery.inline .capture-actions {
   flex-basis: 100%;
@@ -96,28 +93,20 @@
   flex-basis: 100%;
   max-width: 100%;
 }
-/* The app's danger red (as in .btn.danger); only where these screens use it, and only with a real hover. */
-@media (hover: hover) {
-  .capture-recovery .icon-btn.danger:hover:not(:disabled),
-  .lesson-workspace .icon-btn.danger:hover:not(:disabled) {
-    color: #a23a3a;
-    background: color-mix(in srgb, #a23a3a 9%, var(--paper));
-  }
-}
 
 /* Lesson list */
 .lesson-item-title {
   display: block;
-  font-size: 1.05rem;
+  font-size: var(--fs-md);
   font-weight: 600;
   color: var(--ink);
-  margin-bottom: 5px;
+  margin-bottom: var(--space-1);
 }
 
 /* Lesson header */
 .lesson-heading-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   flex-shrink: 0;
 }
 
@@ -126,8 +115,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 18px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
 }
 .player-controls .skip-btn {
   min-width: 76px;
@@ -136,12 +125,12 @@
 .speed-field {
   display: flex;
   align-items: center;
-  gap: 7px;
-  font-size: 0.78rem;
-  color: var(--muted);
+  gap: var(--space-2);
+  font-size: var(--fs-sm);
+  color: var(--ink-muted);
 }
 .speed-field select {
-  padding: 8px 9px;
+  padding: var(--space-2);
 }
 .player-controls .download-audio {
   margin-left: auto;
@@ -152,39 +141,39 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   min-height: 36px;
-  font-size: 0.8rem;
-  color: var(--muted);
+  font-size: var(--fs-sm);
+  color: var(--ink-muted);
 }
 .note-time-value {
-  margin-right: 4px;
+  margin-right: var(--space-1);
 }
 .note-time-value strong {
-  color: var(--green);
+  color: var(--accent);
   font-variant-numeric: tabular-nums;
-  font-size: 0.9rem;
+  font-size: var(--fs-md);
 }
 .note-form-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
 }
 .note-form-actions .hint {
   margin: 0;
 }
 .lesson-note-actions {
   display: flex;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 .lesson-note .badge {
-  margin-right: 6px;
+  margin-right: var(--space-1-5);
 }
 .note-edit {
   display: grid;
-  gap: 10px;
-  margin-top: 8px;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
 }
 .note-edit textarea {
   min-height: 90px;
@@ -196,8 +185,8 @@
 /* Tasks */
 .lesson-task-form {
   display: flex;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
 }
 .lesson-task-form input {
   flex: 1;
@@ -208,32 +197,31 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  font-size: 0.82rem;
-  color: var(--green);
-  margin: 4px 0 12px;
+  gap: var(--space-3);
+  font-size: var(--fs-sm);
+  color: var(--accent);
+  margin: var(--space-1) 0 var(--space-3);
 }
 
 /* Assistant */
 .summary-editor {
   min-height: 140px;
-  margin: 6px 0 10px;
-  font-size: 0.85rem;
+  margin: var(--space-1-5) 0 var(--space-3);
+  font-size: var(--fs-sm);
 }
 .proposal-questions ul {
-  margin: 8px 0 14px;
-  padding-left: 20px;
-  font-size: 0.85rem;
+  margin: var(--space-2) 0 var(--space-4);
+  padding-left: var(--space-5);
+  font-size: var(--fs-sm);
   line-height: 1.6;
 }
 
 /* Edit form */
 .lesson-form-actions .danger-link {
-  color: #a23a3a;
+  color: var(--danger-ink);
   margin-right: auto;
 }
 
-/* This file loads before styles.css, so overrides of base rules need a more specific selector. */
 @media (pointer: coarse) {
   .lesson-workspace .btn,
   .lesson-workspace .btn.small,
@@ -249,42 +237,25 @@
   .lesson-form-actions .link-btn,
   .lesson-workspace .link-btn,
   .back-link.lesson-back {
-    min-height: 44px;
+    min-height: var(--tap);
   }
   .lesson-workspace .link-btn,
   .back-link.lesson-back {
-    padding-block: 10px;
+    padding-block: var(--space-3);
   }
   .lesson-workspace .icon-btn,
   .capture-recovery .icon-btn {
-    min-width: 44px;
+    min-width: var(--tap);
   }
   .lesson-workspace .timestamp {
-    align-items: center;
-    padding: 8px 12px;
+    padding: var(--space-2) var(--space-3);
   }
   .lesson-workspace .check-button {
     width: 32px;
     height: 32px;
-    position: relative;
   }
-  /* A larger invisible hit area around the checkbox. */
-  .lesson-workspace .check-button::after {
-    content: '';
-    position: absolute;
-    inset: -7px;
-  }
-  .lesson-workspace .icon-btn.subtle {
-    opacity: 0.85;
-  }
-}
-/* iOS keeps :hover on the last tapped element, and the base rule styles a hovered box as ticked:
-   a task that was just reopened would still look done. */
-@media (hover: none) {
-  .lesson-workspace .check-button:not(.checked):hover {
-    background: var(--paper);
-    border-color: color-mix(in srgb, var(--muted) 35%, var(--paper));
-    color: transparent;
+  .lesson-workspace .check-button::before {
+    inset: -6px;
   }
 }
 @media (max-width: 700px) {
