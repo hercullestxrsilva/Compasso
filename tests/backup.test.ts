@@ -6,12 +6,16 @@ import { db } from '../src/db';
 import {
   CLOUD_BACKUP_LIMIT,
   MAX_MEDIA_BYTES,
+  UnreadableAssetError,
   backupAgeDays,
   backupTables,
+  cloudErrorText,
   describeBackupAge,
   exportRoom,
   formatBytes,
+  isQuotaError,
   lastBackupAt,
+  lastBackupHow,
   makeBackupZip,
   markBackup,
   openBackup,
@@ -409,8 +413,89 @@ describe('zip backup (v2)', () => {
     const before = await dump();
     const prepared = await openBackup(blob);
     vi.spyOn(db.table('routines'), 'bulkPut').mockRejectedValue(new Error('disco cheio'));
-    await expect(prepared.apply()).rejects.toThrow('disco cheio');
+    const failure = await prepared.apply().catch((e: Error) => e);
+    expect(failure?.message).toBe(
+      'Não foi possível gravar o backup neste navegador. Nenhum dado foi alterado.',
+    );
+    expect((failure?.cause as Error).message).toBe('disco cheio');
     expect(await dump()).toEqual(before);
+  });
+
+  it('explains a full disk in Portuguese and keeps the previous data', async () => {
+    await seed();
+    const { blob } = await makeBackupZip();
+    const before = await dump();
+    const prepared = await openBackup(blob);
+    vi.spyOn(db.table('recordings'), 'bulkPut').mockRejectedValue(
+      new DOMException('The quota has been exceeded.', 'QuotaExceededError'),
+    );
+    await expect(prepared.apply()).rejects.toThrow(/espaço suficiente.*Nenhum dado foi alterado/);
+    expect(await dump()).toEqual(before);
+    expect(isQuotaError({ name: 'AbortError', inner: { name: 'QuotaExceededError' } })).toBe(true);
+    expect(isQuotaError(new Error('disco cheio'))).toBe(false);
+  });
+
+  it('accepts a backup that was extracted and compressed again inside a folder', async () => {
+    await seed();
+    const before = await dump();
+    const { blob } = await makeBackupZip();
+    const files = unzipSync(new Uint8Array(await blob.arrayBuffer()));
+    const folder = 'compasso-backup-2026-09-26/';
+    const nested: Record<string, Uint8Array> = {
+      [`__MACOSX/${folder}._manifest.json`]: strToU8('resource fork'),
+    };
+    for (const [name, data] of Object.entries(files)) nested[folder + name] = data;
+    for (const table of backupTables) await db.table(table).clear();
+    await (await openBackup(new Blob([zipSync(nested)]))).apply();
+    expect(await dump()).toEqual(before);
+    // Two candidate folders are ambiguous: better to refuse than to guess.
+    const twice = { ...nested, 'outra/manifest.json': files['manifest.json'] };
+    await expect(openBackup(new Blob([zipSync(twice)]))).rejects.toThrow('não é um backup do Compasso');
+  });
+
+  it('points to the .zip when only its manifest.json is chosen', async () => {
+    await seed();
+    const { blob } = await makeBackupZip();
+    const manifest = unzipSync(new Uint8Array(await blob.arrayBuffer()))['manifest.json'];
+    await expect(openBackup(new Blob([manifest], { type: 'application/json' }))).rejects.toThrow(
+      'Escolha o arquivo .zip completo',
+    );
+  });
+
+  it('backs up long AI transcripts and names the item when a record is invalid', async () => {
+    await seed();
+    await db.lessons.update('lesson', { transcript: '[00:01] Pulso firme. '.repeat(10000) });
+    const { blob } = await makeBackupZip();
+    await (await openBackup(blob)).apply();
+    expect((await db.lessons.get('lesson'))?.transcript).toHaveLength(210000);
+    await db.lessons.update('lesson', { transcript: 'a'.repeat(2_000_001) });
+    await expect(makeBackupZip()).rejects.toThrow(
+      'A aula “Aula 3” tem um texto longo demais em “transcrição”. Edite ou apague esse item',
+    );
+  });
+
+  it('can leave out a file this browser can no longer read, and restores the rest', async () => {
+    await seed();
+    await db.assets.update('audio', { blob: 'perdido' as unknown as Blob });
+    const failure = await makeBackupZip().catch((e: unknown) => e);
+    expect(failure).toBeInstanceOf(UnreadableAssetError);
+    expect((failure as UnreadableAssetError).assets).toEqual([
+      { id: 'audio', name: 'aula.webm', owner: 'áudio da aula “Aula 3”' },
+    ]);
+    expect((failure as Error).message).toContain('“aula.webm” (áudio da aula “Aula 3”) não pôde ser lido');
+    const { blob, summary } = await makeBackupZip(undefined, ['audio']);
+    expect(summary.missingFiles).toBe(1);
+    const manifest = JSON.parse(
+      new TextDecoder().decode(unzipSync(new Uint8Array(await blob.arrayBuffer()))['manifest.json']),
+    );
+    expect(manifest.missingAssets).toEqual([{ id: 'audio', name: 'aula.webm' }]);
+    for (const table of backupTables) await db.table(table).clear();
+    const prepared = await openBackup(blob);
+    expect(prepared.summary.missingFiles).toBe(1);
+    await prepared.apply();
+    expect(await db.lessons.get('lesson')).toMatchObject({ assetId: 'audio' });
+    expect(await db.assets.get('audio')).toBeUndefined();
+    expect(await db.assets.count()).toBe(3);
   });
 });
 
@@ -434,8 +519,12 @@ describe('backup helpers', () => {
       setItem: (k: string, v: string) => void store.set(k, v),
     });
     expect(lastBackupAt()).toBeNull();
+    expect(lastBackupHow()).toBeNull();
     markBackup('2026-09-26T12:00:00.000Z');
     expect(lastBackupAt()).toBe('2026-09-26T12:00:00.000Z');
+    expect(lastBackupHow()).toBe('file');
+    markBackup('2026-09-26T13:00:00.000Z', 'download');
+    expect(lastBackupHow()).toBe('download');
     markBackup('2026-08-01');
     expect(lastBackupAt()).toBe('2026-08-01T00:00:00.000Z');
     markBackup('não é data');
@@ -449,7 +538,29 @@ describe('backup helpers', () => {
       },
     });
     expect(lastBackupAt()).toBeNull();
+    expect(lastBackupHow()).toBeNull();
     expect(() => markBackup()).not.toThrow();
+  });
+  it('turns cloud errors into Portuguese the student can act on', () => {
+    const fallback = 'Não foi possível enviar a cópia para a nuvem.';
+    expect(
+      cloudErrorText(
+        { status: 415, statusCode: '415', message: 'mime type application/zip is not supported' },
+        fallback,
+      ),
+    ).toContain('002_zip_backups.sql');
+    expect(
+      cloudErrorText(
+        { statusCode: '413', message: 'The object exceeded the maximum allowed size' },
+        fallback,
+      ),
+    ).toContain('45 MB');
+    expect(cloudErrorText(new TypeError('Failed to fetch'), fallback)).toContain('internet');
+    expect(cloudErrorText({ status: 400, message: 'Invalid login credentials' }, fallback)).toBe(
+      'E-mail ou senha incorretos.',
+    );
+    expect(cloudErrorText({ status: 500, message: 'Internal Server Error' }, fallback)).toBe(fallback);
+    expect(cloudErrorText(undefined, fallback)).toBe(fallback);
   });
   it('warns about space and refuses only impossible sizes', () => {
     expect(exportRoom(10 * 1024 * 1024)).toBe('ok');
