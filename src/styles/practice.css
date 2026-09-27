@@ -1,0 +1,677 @@
+/* Practice console, metronome stage, routines, cycle settings and session review.
+   styles.css is loaded after this file, so overrides of its rules are scoped to be more specific. */
+
+.practice-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Phase colours: amber to get ready, green to play, slate to rest (all at least 4.5:1). */
+.metronome-face,
+.practice-hud {
+  --phase-bg: #eef3f4;
+  --phase-fg: var(--green);
+}
+.metronome-face[data-phase='preparation'],
+.practice-hud[data-phase='preparation'] {
+  --phase-bg: #fff3dc;
+  --phase-fg: #8a5a00;
+}
+.metronome-face[data-phase='practice'],
+.practice-hud[data-phase='practice'] {
+  --phase-bg: #dff0ee;
+  --phase-fg: #0e5a5e;
+}
+.metronome-face[data-phase='rest'],
+.practice-hud[data-phase='rest'] {
+  --phase-bg: #e6eef8;
+  --phase-fg: #3d5f8a;
+}
+.metronome-face[data-phase='paused'],
+.practice-hud[data-phase='paused'] {
+  --phase-bg: #f0efea;
+  --phase-fg: #55534a;
+}
+.metronome-face[data-phase='complete'],
+.practice-hud[data-phase='complete'] {
+  --phase-bg: #f8efdd;
+  --phase-fg: #735518;
+}
+
+.phase-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  padding: 0.35em 0.95em;
+  border-radius: 999px;
+  background: var(--phase-bg);
+  color: var(--phase-fg);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+.phase-pill b {
+  font-size: 1.45em;
+  line-height: 1;
+  min-width: 1ch;
+}
+.practice-console .metronome-face {
+  padding: 22px 6px 5px;
+  border-radius: 14px;
+}
+.practice-console .metronome-face .phase-pill {
+  max-width: 100%;
+  font-size: clamp(1.25rem, 2vw, 1.65rem);
+}
+/* Only the phases that tell the hands what to do are stage-sized. */
+.practice-console .metronome-face[data-phase='idle'] .phase-pill,
+.practice-console .metronome-face[data-phase='paused'] .phase-pill,
+.practice-console .metronome-face[data-phase='complete'] .phase-pill {
+  font-size: 1.05rem;
+}
+.practice-console .metronome-face.is-playing {
+  box-shadow: inset 0 4px 0 var(--phase-fg);
+}
+
+/* Tempo and timer: large, with digits of equal width so the numbers do not jitter. */
+.practice-console .bpm-control {
+  gap: 16px;
+}
+.practice-console .bpm-control > button {
+  width: 48px;
+  height: 48px;
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+.practice-console .bpm-control > div > strong {
+  font-size: clamp(4.5rem, 8vw, 7rem);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.practice-console .bpm-control > div > span {
+  font-size: 0.8rem;
+  margin: 2px 0 10px;
+}
+.timer-readout {
+  margin: 12px 0 8px;
+}
+.timer-readout strong {
+  display: block;
+  font-size: clamp(4.5rem, 8vw, 7rem);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.timer-readout span {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.practice-console .metronome-face input[type='range'] {
+  width: 82%;
+  margin: 8px 0;
+}
+.retime-hint {
+  min-height: 1.5em;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+.metronome-tools {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin: 4px 0;
+}
+.volume-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+.practice-console .volume-control input[type='range'] {
+  width: 120px;
+  margin: 0;
+}
+
+/* Pulse: large dots, the downbeat bigger and ringed in ink; a short flash on each beat. */
+.beat-area {
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.practice-console .beat-dots,
+.practice-hud .beat-dots {
+  align-items: center;
+  gap: 14px;
+  margin: 8px 0;
+}
+.practice-console .beat-dots > span,
+.practice-hud .beat-dots > span {
+  width: 28px;
+  height: 28px;
+  background: #fff;
+  border: 2px solid #8fa3a8;
+}
+.practice-console .beat-dots > span.accent,
+.practice-hud .beat-dots > span.accent {
+  width: 38px;
+  height: 38px;
+  border: 3px solid var(--ink);
+}
+.practice-console .beat-dots > span.lit,
+.practice-hud .beat-dots > span.lit {
+  background: var(--green);
+  border-color: var(--green);
+  box-shadow: 0 0 0 6px #14666a2e;
+}
+.practice-console .beat-dots > span.accent.lit,
+.practice-hud .beat-dots > span.accent.lit {
+  background: var(--ink);
+  border-color: var(--ink);
+  box-shadow: 0 0 0 7px #e8b469;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .practice-console .beat-dots > span.lit,
+  .practice-hud .beat-dots > span.lit {
+    animation: practice-beat 0.18s ease-out;
+  }
+}
+@keyframes practice-beat {
+  from {
+    transform: scale(1.3);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+.silent-note {
+  margin: 0;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: var(--phase-bg);
+  color: var(--phase-fg);
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+.practice-console .cycle-info {
+  gap: 8px;
+}
+.practice-console .cycle-info > div > span {
+  font-size: 0.85rem;
+}
+.practice-console .cycle-info strong {
+  font-size: clamp(1.8rem, 3vw, 2.5rem);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.practice-console .cycle-info small {
+  font-size: 1rem;
+}
+.practice-console .session-progress {
+  height: 6px;
+}
+.practice-console .transport {
+  flex-wrap: wrap;
+}
+.practice-console .play-btn {
+  flex: 1 1 100%;
+  max-width: 360px;
+  min-height: 56px;
+  padding: 14px 28px;
+  font-size: 1rem;
+}
+
+/* Setup controls */
+.practice-console .hand-switch > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.sound-switch {
+  margin-top: 10px;
+}
+.practice-selector > .field:last-of-type {
+  margin: 16px 0 12px;
+}
+.intention-suggestion {
+  text-align: left;
+  margin: -6px 0 8px;
+}
+.practice-now {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.practice-now strong {
+  font-size: 1.15rem;
+  color: var(--ink);
+}
+.practice-now span {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.practice-now p {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  font-size: 0.9rem;
+  color: #445e64;
+}
+.preset-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+.preset-row > .field {
+  flex: 1;
+  margin-bottom: 0;
+}
+.attempt-recorder {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+/* While practising, the stage takes the room; the plan tips step aside. */
+.practice-layout.is-busy:not(.with-score) {
+  grid-template-columns: minmax(0, 640px);
+  justify-content: center;
+}
+.practice-layout.is-busy .practice-tips {
+  display: none;
+}
+
+/* Routine run */
+.routine-strip {
+  background: #f5f8f8;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.routine-strip-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.routine-strip-count {
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.routine-progress {
+  display: flex;
+  gap: 4px;
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+}
+.routine-progress li {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: #d7e2e4;
+}
+.routine-progress li.done {
+  background: #8fb9b6;
+}
+.routine-progress li.current {
+  background: var(--green);
+}
+.routine-transition {
+  border: 2px solid var(--green);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 8px;
+  background: #f3faf8;
+}
+.transition-next {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 6px;
+}
+.transition-next strong {
+  font-size: 1.25rem;
+  color: var(--ink);
+}
+.transition-next > span:last-child {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+.transition-countdown {
+  font-size: 1.05rem;
+  margin: 0 0 10px;
+}
+.transition-countdown strong {
+  font-size: 2rem;
+  color: var(--green);
+  font-variant-numeric: tabular-nums;
+}
+.quick-rating {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.9rem;
+}
+.quick-rating .rating-buttons {
+  margin: 8px 0 0;
+}
+
+/* Full-screen score: compact transport */
+.practice-hud {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 8px 14px;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+}
+.hud-stat {
+  font-size: 1.5rem;
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.hud-stat small {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+.practice-hud .beat-dots.compact {
+  margin: 0;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+.practice-hud .beat-dots.compact > span {
+  width: 20px;
+  height: 20px;
+}
+.practice-hud .beat-dots.compact > span.accent {
+  width: 26px;
+  height: 26px;
+}
+.practice-hud .btn.hud-play {
+  min-height: 56px;
+  min-width: 56px;
+  padding: 10px 20px;
+  margin-left: auto;
+  font-size: 1rem;
+}
+.practice-hud .btn.hud-btn {
+  min-height: 56px;
+  min-width: 56px;
+  padding: 10px;
+}
+
+/* Cycle settings */
+.cycle-settings fieldset {
+  border: 0;
+  border-top: 1px solid var(--line);
+  padding: 16px 0 4px;
+  margin: 0;
+  min-width: 0;
+}
+.cycle-settings fieldset:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+/* A floated legend sits inside the group, under its top rule, instead of cutting through it. */
+.cycle-settings legend {
+  float: left;
+  width: 100%;
+  padding: 0;
+  margin-bottom: 6px;
+}
+.cycle-settings legend + * {
+  clear: both;
+}
+.cycle-settings .hint {
+  margin: 0 0 12px;
+}
+.cycle-note {
+  background: #f5f8f8;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.check-row input {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  accent-color: var(--green);
+}
+.check-row small {
+  color: var(--muted);
+}
+.modal-actions.cycle-footer {
+  position: sticky;
+  bottom: 0;
+  background: var(--paper);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.cycle-footer p {
+  margin: 0 auto 0 0;
+  font-size: 0.85rem;
+}
+.field > small.field-error {
+  color: #9b2c24;
+  font-weight: 600;
+}
+.number-field input[aria-invalid='true'],
+.number-compact input[aria-invalid='true'],
+.routine-bpm[aria-invalid='true'] {
+  border-color: #b3261e;
+  outline-color: #b3261e;
+}
+
+/* Routines */
+.routine-card-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 6px;
+}
+.routine-card-head h3 {
+  margin: 0;
+}
+.routine-card-head small,
+.routine-steps small,
+.routine-edit-head small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+.routine-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 8px;
+  counter-reset: routine-step;
+}
+.routine-steps > li {
+  counter-increment: routine-step;
+}
+.routine-steps > li::before {
+  content: counter(routine-step);
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #eef3f4;
+  color: var(--green);
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.routine-add {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.routine-add .row {
+  align-items: stretch;
+}
+.routine-edit-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.routine-edit-step {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.routine-edit-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.routine-edit-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.routine-edit-fields > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.number-compact input,
+.routine-bpm {
+  width: 76px;
+}
+.danger-link {
+  color: #a23a3a;
+}
+
+/* Presets and review */
+.preset-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.preset-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.preset-list li:last-child {
+  border: 0;
+}
+.preset-list strong {
+  display: block;
+}
+.preset-list small {
+  color: var(--muted);
+}
+.preset-rename {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1;
+}
+.preset-rename input {
+  flex: 1;
+  min-width: 160px;
+}
+.review-intention {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #f5f8f8;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.review-rating {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.review-rating legend {
+  font-weight: 500;
+  font-size: 0.82rem;
+  padding: 0;
+}
+.review-rating .rating-buttons {
+  margin: 8px 0 18px;
+}
+
+@media (pointer: coarse) {
+  .practice-console .btn,
+  .practice-hud .btn,
+  .routine-card .btn,
+  .routine-add .btn,
+  .preset-list .btn,
+  .modal-actions.cycle-footer .btn {
+    min-height: 44px;
+  }
+  .practice-console .hand-switch > button,
+  .practice-console .link-btn,
+  .routine-card .link-btn {
+    min-height: 44px;
+  }
+  .routine-edit-head .icon-btn,
+  .preset-list .icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+  .practice-console input[type='range'] {
+    min-height: 44px;
+  }
+  .number-compact input,
+  .routine-bpm,
+  .routine-edit-fields select,
+  .routine-add input,
+  .routine-add select {
+    min-height: 44px;
+  }
+}
+@media (max-width: 700px) {
+  .practice-hud {
+    gap: 6px 10px;
+    padding: 6px 10px;
+  }
+  .hud-stat {
+    font-size: 1.2rem;
+  }
+  .preset-row {
+    flex-wrap: wrap;
+  }
+}
