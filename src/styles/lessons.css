@@ -1,0 +1,301 @@
+/* Lessons, recorder and capture recovery. */
+
+.lessons-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Recorder */
+.recorder-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 16px;
+}
+.recorder-options .recorder-input {
+  flex: 1 1 200px;
+}
+
+/* Interrupted captures */
+.capture-recovery {
+  border: 1px solid var(--gold);
+  border-color: color-mix(in srgb, var(--gold) 45%, var(--paper));
+  background: var(--paper);
+  background: color-mix(in srgb, var(--gold) 9%, var(--paper));
+  border-radius: var(--radius);
+  padding: 18px 20px 8px;
+  margin-bottom: 23px;
+}
+.capture-recovery.inline {
+  margin: 25px 0 0;
+  padding: 15px 16px 4px;
+}
+.capture-recovery > h2,
+.capture-recovery > h3 {
+  font-size: 1rem;
+  margin: 0 0 4px;
+  color: var(--ink);
+}
+.capture-recovery > .hint {
+  margin: 0 0 6px;
+}
+.capture-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  border-top-color: color-mix(in srgb, var(--gold) 28%, var(--paper));
+}
+.capture-info {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.capture-info strong {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.capture-info small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+.capture-actions {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.capture-actions select {
+  flex: 1 1 160px;
+  min-width: 0;
+  max-width: 280px;
+  padding: 8px 9px;
+  font-size: 0.8rem;
+}
+.capture-destination {
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+.capture-recovery.inline .capture-actions {
+  flex-basis: 100%;
+  justify-content: flex-start;
+}
+.capture-recovery.inline .capture-actions select {
+  flex-basis: 100%;
+  max-width: 100%;
+}
+/* The app's danger red (as in .btn.danger); only where these screens use it, and only with a real hover. */
+@media (hover: hover) {
+  .capture-recovery .icon-btn.danger:hover:not(:disabled),
+  .lesson-workspace .icon-btn.danger:hover:not(:disabled) {
+    color: #a23a3a;
+    background: color-mix(in srgb, #a23a3a 9%, var(--paper));
+  }
+}
+
+/* Lesson list */
+.lesson-item-title {
+  display: block;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 5px;
+}
+
+/* Lesson header */
+.lesson-heading-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Player */
+.player-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.player-controls .skip-btn {
+  min-width: 76px;
+  font-variant-numeric: tabular-nums;
+}
+.speed-field {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.speed-field select {
+  padding: 8px 9px;
+}
+.player-controls .download-audio {
+  margin-left: auto;
+}
+
+/* Notes */
+.note-time {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.note-time-value {
+  margin-right: 4px;
+}
+.note-time-value strong {
+  color: var(--green);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.9rem;
+}
+.note-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.note-form-actions .hint {
+  margin: 0;
+}
+.lesson-note-actions {
+  display: flex;
+  gap: 2px;
+}
+.lesson-note .badge {
+  margin-right: 6px;
+}
+.note-edit {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+}
+.note-edit textarea {
+  min-height: 90px;
+}
+.note-edit .row .btn {
+  flex: 0 0 auto;
+}
+
+/* Tasks */
+.lesson-task-form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.lesson-task-form input {
+  flex: 1;
+}
+
+/* Transcription */
+.transcribe-progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.82rem;
+  color: var(--green);
+  margin: 4px 0 12px;
+}
+
+/* Assistant */
+.summary-editor {
+  min-height: 140px;
+  margin: 6px 0 10px;
+  font-size: 0.85rem;
+}
+.proposal-questions ul {
+  margin: 8px 0 14px;
+  padding-left: 20px;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+/* Edit form */
+.lesson-form-actions .danger-link {
+  color: #a23a3a;
+  margin-right: auto;
+}
+
+/* This file loads before styles.css, so overrides of base rules need a more specific selector. */
+@media (pointer: coarse) {
+  .lesson-workspace .btn,
+  .lesson-workspace .btn.small,
+  .lesson-workspace .icon-btn,
+  .lesson-workspace .timestamp,
+  .lesson-workspace select,
+  .lesson-workspace .tabs > button,
+  .capture-recovery .btn.small,
+  .capture-recovery .icon-btn,
+  .capture-recovery select,
+  .recorder select,
+  .lesson-form-actions .btn,
+  .lesson-form-actions .link-btn,
+  .lesson-workspace .link-btn,
+  .back-link.lesson-back {
+    min-height: 44px;
+  }
+  .lesson-workspace .link-btn,
+  .back-link.lesson-back {
+    padding-block: 10px;
+  }
+  .lesson-workspace .icon-btn,
+  .capture-recovery .icon-btn {
+    min-width: 44px;
+  }
+  .lesson-workspace .timestamp {
+    align-items: center;
+    padding: 8px 12px;
+  }
+  .lesson-workspace .check-button {
+    width: 32px;
+    height: 32px;
+    position: relative;
+  }
+  /* A larger invisible hit area around the checkbox. */
+  .lesson-workspace .check-button::after {
+    content: '';
+    position: absolute;
+    inset: -7px;
+  }
+  .lesson-workspace .icon-btn.subtle {
+    opacity: 0.85;
+  }
+}
+/* iOS keeps :hover on the last tapped element, and the base rule styles a hovered box as ticked:
+   a task that was just reopened would still look done. */
+@media (hover: none) {
+  .lesson-workspace .check-button:not(.checked):hover {
+    background: var(--paper);
+    border-color: color-mix(in srgb, var(--muted) 35%, var(--paper));
+    color: transparent;
+  }
+}
+@media (max-width: 700px) {
+  .player-controls .download-audio {
+    margin-left: 0;
+  }
+  .capture-actions {
+    justify-content: flex-start;
+  }
+  .capture-actions select {
+    flex-basis: 100%;
+    max-width: 100%;
+  }
+}
