@@ -7,6 +7,7 @@ import {
   LESSON_BITS_PER_SECOND,
   maxSplitSeconds,
   meterLevel,
+  microphoneError,
   planParts,
   readAudioFormat,
   recorderOptions,
@@ -200,5 +201,33 @@ describe('reading the audio format from the file header', () => {
     const mp3 = bytes('ID3', [3, 0, 0, 0, 0, 0, 10], Array(10).fill(0), [0xff, 0xfb, 0x90, 0xc4]);
     expect(readAudioFormat(mp3)).toEqual({ channels: 1, sampleRate: 44100 });
     expect(readAudioFormat(bytes('not audio at all'))).toBeNull();
+  });
+});
+
+describe('microphone errors', () => {
+  const failure = (name: string, message = 'Permission denied') =>
+    Object.assign(new Error(message), { name });
+
+  it('explains a refused or missing microphone in Portuguese and offers the import', () => {
+    for (const name of ['NotAllowedError', 'SecurityError']) {
+      const text = microphoneError(failure(name));
+      expect(text).toMatch(/^O acesso ao microfone não foi permitido\./);
+      expect(text).toContain('Ajustes › Safari › Microfone');
+      expect(text).toContain('importar um arquivo de áudio');
+    }
+    for (const name of ['NotFoundError', 'OverconstrainedError'])
+      expect(microphoneError(failure(name, 'Requested device not found'))).toMatch(
+        /^Nenhum microfone foi encontrado\..*importar um arquivo de áudio\.$/,
+      );
+    expect(microphoneError(failure('NotReadableError', 'Could not start audio source'))).toMatch(
+      /outro aplicativo pode estar usando-o/,
+    );
+  });
+
+  it('leaves other errors to their own message', () => {
+    expect(microphoneError(new Error('Sem espaço'))).toBeNull();
+    expect(microphoneError(failure('QuotaExceededError'))).toBeNull();
+    expect(microphoneError(null)).toBeNull();
+    expect(microphoneError('NotAllowedError')).toBeNull();
   });
 });

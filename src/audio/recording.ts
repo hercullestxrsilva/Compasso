@@ -44,6 +44,27 @@ export function recorderOptions(
   } satisfies MediaRecorderOptions;
 }
 
+const IMPORT_INSTEAD = 'Você também pode importar um arquivo de áudio.';
+/**
+ * The microphone could not be opened: what happened and what to do, in Portuguese. Browsers report it in
+ * English ("Permission denied"). Null for other errors, which keep their own message.
+ */
+export function microphoneError(error: unknown): string | null {
+  switch ((error as { name?: unknown } | null)?.name) {
+    case 'NotAllowedError':
+    case 'SecurityError':
+      return `O acesso ao microfone não foi permitido. Libere o microfone para este site nas configurações do navegador (no iPad: Ajustes › Safari › Microfone) e tente de novo. ${IMPORT_INSTEAD}`;
+    case 'NotFoundError':
+    case 'OverconstrainedError':
+      return `Nenhum microfone foi encontrado. Conecte um microfone e tente de novo. ${IMPORT_INSTEAD}`;
+    case 'NotReadableError':
+    case 'AbortError':
+      return `O microfone não pôde ser aberto: outro aplicativo pode estar usando-o. Feche-o e tente de novo. ${IMPORT_INSTEAD}`;
+    default:
+      return null;
+  }
+}
+
 /** Level meter position (0–1) on a decibel scale, so quiet unprocessed input still moves the bar. */
 export function meterLevel(rms: number) {
   if (!(rms > 0)) return 0;
