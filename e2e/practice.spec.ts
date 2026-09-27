@@ -8,6 +8,7 @@ import {
   press,
   scoreOverlay,
   scorePage,
+  seedLibrary,
 } from './helpers';
 
 test('marks a trecho, practises it with the metronome and finds the session in Evolução', async ({
@@ -116,4 +117,121 @@ test('leaving the screen during a timer-only practice saves the session first', 
   const session = page.locator('.history-row').filter({ hasText: 'Prática livre' });
   await expect(session).toHaveCount(1);
   await expect(session.getByText(/Sem metrônomo/)).toBeVisible();
+});
+
+test('Space pauses and continues after the score buttons are clicked, also in full screen', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await seedLibrary(page);
+  await page.goto('/#/praticar/trecho-seed');
+  await expect(mainHeading(page)).toHaveText('Hora de praticar');
+  // Trechos are marked on the piece's page: the practice score does not offer a tool it cannot complete.
+  await expect(page.getByRole('button', { name: 'Caneta', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Marcar trecho para praticar' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Iniciar prática' }).click();
+  await expect(page.getByText('Em prática', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Tela cheia', exact: true }).click();
+  const viewer = page.getByRole('region', { name: 'Partitura em tela cheia: partitura-teste' });
+  await expect(viewer).toBeVisible();
+
+  await page.keyboard.press('Space');
+  await expect(viewer.getByRole('button', { name: 'Continuar' })).toBeVisible();
+  await page.keyboard.press('Space');
+  await expect(viewer.getByRole('button', { name: 'Pausar' })).toBeVisible();
+  await expect(viewer).toBeVisible();
+
+  // A view toggle clicked with the mouse keeps the focus, but Space still belongs to the practice.
+  await viewer.getByRole('button', { name: 'Ver página inteira' }).click();
+  const toggle = viewer.getByRole('button', { name: 'Focar no trecho' });
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await page.keyboard.press('Space');
+  await expect(viewer.getByRole('button', { name: 'Continuar' })).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  // Reached with the keyboard, a control keeps its own Space.
+  await toggle.focus();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Space');
+  await expect(viewer.getByRole('button', { name: 'Ver página inteira' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(viewer.getByRole('button', { name: 'Continuar' })).toBeVisible();
+});
+
+test('a microphone that cannot be opened is explained in Portuguese', async ({ page }) => {
+  await page.goto('/#/praticar');
+  await expect(mainHeading(page)).toHaveText('Hora de praticar');
+  // The test browsers have no microphone (or no permission to use it).
+  await page.getByRole('button', { name: 'Gravar tentativa' }).click();
+  const message = page.locator('.attempt-recorder').getByRole('alert');
+  await expect(message).toContainText('microfone');
+  await expect(message).toContainText('importar um arquivo de áudio');
+  await expect(message).not.toContainText(/permission|denied|not found|device/i);
+});
+
+test('the cycle dialog footer reaches the bottom edge, with nothing scrolling under it', async ({ page }) => {
+  await page.goto('/#/praticar');
+  await page.getByRole('button', { name: 'Configurar ciclos' }).click();
+  const cycle = page.getByRole('dialog', { name: 'Seu ciclo de prática' });
+  await expect(cycle).toBeVisible();
+  const gap = await cycle.evaluate(dialog => {
+    const footer = dialog.querySelector('footer')!.getBoundingClientRect();
+    return dialog.getBoundingClientRect().bottom - dialog.clientTop - footer.bottom;
+  });
+  expect(gap).toBeLessThanOrEqual(1);
+  // Scrolled to the end, the footer stays where it was and the last field is above it.
+  await cycle.evaluate(dialog => dialog.scrollTo({ top: dialog.scrollHeight }));
+  await expect(cycle.getByRole('button', { name: 'Aplicar' })).toBeInViewport();
+});
+
+test('a routine in full screen rates each step there and comes back to full screen after a step without a score', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await seedLibrary(page);
+  // Short steps: the trecho's cycle is 2 bars at 240 BPM (2 s) with no count-in, repeated to fill about 6 s.
+  await page.evaluate(async () => {
+    const dbModule = '/src/db.ts';
+    const { db } = await import(/* @vite-ignore */ dbModule);
+    await db.segments.update('trecho-seed', {
+      bpm: 240,
+      practiceConfig: { bars: 2, countInBars: 0, restSeconds: 0, repetitions: 1, mode: 'bars' },
+    });
+    const step = { segmentId: 'trecho-seed', minutes: 0.1 };
+    await db.routines.add({
+      id: 'rotina-curta',
+      title: 'Rotina curta',
+      items: [step, step, { label: 'Escalas', minutes: 0.1 }, step],
+    });
+  });
+  await page.goto('/#/praticar/trecho-seed');
+  await page.getByRole('button', { name: 'Rotinas de estudo' }).click();
+  await page
+    .getByRole('dialog', { name: 'Rotinas de estudo' })
+    .locator('.routine-card')
+    .filter({ hasText: 'Rotina curta' })
+    .getByRole('button', { name: 'Começar rotina' })
+    .click();
+  await page.getByRole('button', { name: 'Tela cheia', exact: true }).click();
+  const viewer = page.getByRole('region', { name: /^Partitura em tela cheia/ });
+  const console = page.locator('.practice-console');
+  await expect(viewer).toBeVisible();
+
+  // Step 1 ends: the overlay on the score offers the one-tap rating of the console hidden behind it.
+  await expect(viewer.getByText('Como foi “Entrada da mão esquerda”?')).toBeVisible({ timeout: 20_000 });
+  await viewer.getByRole('button', { name: 'Melhorando' }).click();
+  await expect(viewer.getByRole('button', { name: 'Melhorando' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(viewer.getByText(/^Próxima revisão deste trecho:/)).toBeVisible();
+  await viewer.getByRole('button', { name: 'Começar passo 2' }).click();
+
+  // Step 3 is "Escalas", with no score: the console shows it, and step 4 opens the score in full screen again.
+  await expect(console.getByRole('button', { name: 'Começar passo 3' })).toBeVisible({ timeout: 20_000 });
+  await expect(viewer).toBeHidden();
+  await console.getByRole('button', { name: 'Começar passo 3' }).click();
+  await expect(viewer.getByText('Como foi “Escalas”?')).toBeVisible({ timeout: 20_000 });
+  await viewer.getByRole('button', { name: 'Começar passo 4' }).click();
+  await expect(viewer.getByRole('button', { name: 'Pausar' })).toBeVisible();
 });

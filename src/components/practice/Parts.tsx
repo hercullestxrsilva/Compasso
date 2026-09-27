@@ -67,6 +67,37 @@ export function RoutineStrip({ run }: { run: RoutineRun }) {
   );
 }
 
+/** One-tap rating of the routine step just played (it schedules the trecho's next review). */
+export function QuickRating({
+  last,
+  onRate,
+}: {
+  last: NonNullable<RoutineRun['last']>;
+  onRate: (rating: Rating) => void;
+}) {
+  return (
+    <div className="quick-rating">
+      <span>Como foi “{last.title}”?</span>
+      <div className="rating-buttons">
+        {ratings.map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            aria-pressed={last.rating === key}
+            className={`rating-${key}${last.rating === key ? ' selected' : ''}`}
+            onClick={() => onRate(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {last.reviewDate && (
+        <p className="quick-review">Próxima revisão deste trecho: {formatDate(last.reviewDate)}</p>
+      )}
+    </div>
+  );
+}
+
 /**
  * Between two routine steps: rate the one just played, see what comes next, and a short countdown. Not a live
  * region (the countdown would be read every second); the practice screen announces the next step once.
@@ -90,27 +121,7 @@ export function RoutineTransition({
 }) {
   return (
     <section className="routine-transition" aria-label="A seguir na rotina">
-      {run.last && (
-        <div className="quick-rating">
-          <span>Como foi “{run.last.title}”?</span>
-          <div className="rating-buttons">
-            {ratings.map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                aria-pressed={run.last?.rating === key}
-                className={`rating-${key}${run.last?.rating === key ? ' selected' : ''}`}
-                onClick={() => onRate(key)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          {run.last.reviewDate && (
-            <p className="quick-review">Próxima revisão deste trecho: {formatDate(run.last.reviewDate)}</p>
-          )}
-        </div>
-      )}
+      {run.last && <QuickRating last={run.last} onRate={onRate} />}
       <p className="transition-next">
         <span className="eyebrow">PRÓXIMO</span>
         <strong>{nextTitle}</strong>
