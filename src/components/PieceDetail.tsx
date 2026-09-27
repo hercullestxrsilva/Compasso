@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   ArrowLeft,
@@ -417,6 +417,7 @@ export default function PieceDetail({
     [task, setTask] = useState(''),
     [taskSegment, setTaskSegment] = useState('');
   const scoreCard = useRef<HTMLElement>(null);
+  const tabIds = useId();
   const active = scores.find(s => s.id === scoreId) ?? scores[0];
   const sheetSegment = segments.find(s => s.id === sheet);
   useEffect(() => {
@@ -612,9 +613,11 @@ export default function PieceDetail({
             ].map(([k, v]) => (
               <button
                 key={k}
+                id={`${tabIds}-${k}`}
                 type="button"
                 role="tab"
                 aria-selected={tab === k}
+                aria-controls={`${tabIds}-panel`}
                 tabIndex={tab === k ? 0 : -1}
                 className={tab === k ? 'active' : ''}
                 onClick={() => setTab(k)}
@@ -624,7 +627,7 @@ export default function PieceDetail({
             ))}
           </div>
           {tab === 'segments' && (
-            <>
+            <div id={`${tabIds}-panel`} role="tabpanel" aria-labelledby={`${tabIds}-${tab}`}>
               <div className="aside-heading">
                 <h2>Um trecho de cada vez</h2>
                 <button className="icon-btn" aria-label="Adicionar trecho" onClick={() => setSegmentForm({})}>
@@ -697,10 +700,10 @@ export default function PieceDetail({
                   text="Marque uma região na partitura com a ferramenta Trecho ou adicione um trecho pelo botão +."
                 />
               )}
-            </>
+            </div>
           )}
           {tab === 'notes' && (
-            <>
+            <div id={`${tabIds}-panel`} role="tabpanel" aria-labelledby={`${tabIds}-${tab}`}>
               <h2 className="aside-title">O que lembrar</h2>
               <form
                 className="note-form"
@@ -775,10 +778,10 @@ export default function PieceDetail({
                     </button>
                   </article>
                 ))}
-            </>
+            </div>
           )}
           {tab === 'tasks' && (
-            <>
+            <div id={`${tabIds}-panel`} role="tabpanel" aria-labelledby={`${tabIds}-${tab}`}>
               <h2 className="aside-title">Próximos passos</h2>
               <form
                 className="task-form"
@@ -883,7 +886,7 @@ export default function PieceDetail({
                   </div>
                 );
               })}
-            </>
+            </div>
           )}
         </aside>
       </div>

@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -942,6 +943,7 @@ export default function Progress({
     // Once you pick the trecho, BPM or hand yourself, the filter no longer suggests a link.
     [linkTouched, setLinkTouched] = useState(false),
     [recording, setRecording] = useState(false);
+  const tabIds = useId();
   // The header follows the filter that is visible: the piece on the review tab, the trecho elsewhere.
   const filtered = sessions.filter(s =>
       tab === 'review' ? !pieceFilter || s.pieceId === pieceFilter : !filter || s.segmentId === filter,
@@ -1144,9 +1146,11 @@ export default function Progress({
           ).map(([k, v]) => (
             <button
               key={k}
+              id={`${tabIds}-${k}`}
               type="button"
               role="tab"
               aria-selected={tab === k}
+              aria-controls={`${tabIds}-panel`}
               tabIndex={tab === k ? 0 : -1}
               className={tab === k ? 'active' : ''}
               // Leaving the tab would unmount the Recorder and stop the take before it is saved.
@@ -1186,7 +1190,7 @@ export default function Progress({
         </p>
       )}
       {tab === 'history' && (
-        <>
+        <div id={`${tabIds}-panel`} role="tabpanel" aria-labelledby={`${tabIds}-${tab}`}>
           <TempoPanel
             sessions={sessions}
             segments={segments}
@@ -1221,10 +1225,10 @@ export default function Progress({
               text="Ao encerrar uma prática, seu tempo e suas observações aparecem aqui."
             />
           )}
-        </>
+        </div>
       )}
       {tab === 'recordings' && (
-        <>
+        <div id={`${tabIds}-panel`} role="tabpanel" aria-labelledby={`${tabIds}-${tab}`}>
           {comparable.length >= 2 && <ComparePanel key={filter} takes={comparable} sessions={sessions} />}
           <div className="settings-grid">
             <section className="panel">
@@ -1366,17 +1370,19 @@ export default function Progress({
               )}
             </section>
           </div>
-        </>
+        </div>
       )}
       {tab === 'review' && (
-        <ReviewBoard
-          segments={segments}
-          pieces={pieces}
-          sessions={sessions}
-          pieceFilter={pieceFilter}
-          onPractice={onPractice}
-          notify={notify}
-        />
+        <div id={`${tabIds}-panel`} role="tabpanel" aria-labelledby={`${tabIds}-${tab}`}>
+          <ReviewBoard
+            segments={segments}
+            pieces={pieces}
+            sessions={sessions}
+            pieceFilter={pieceFilter}
+            onPractice={onPractice}
+            notify={notify}
+          />
+        </div>
       )}
       {preparing && (
         <LessonPrep

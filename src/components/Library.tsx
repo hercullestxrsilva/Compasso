@@ -210,7 +210,10 @@ export function Library({ onOpen, notify }: { onOpen: (id: string) => void; noti
               <button
                 className={`piece-cover tone-${i % 4}`}
                 onClick={() => onOpen(piece.id)}
-                aria-label={`Abrir ${piece.title}`}
+                // A larger target for touch only: the title below is the card's one stop for keyboard and
+                // screen readers.
+                tabIndex={-1}
+                aria-hidden="true"
               >
                 <span className="cover-label">PARTITURA · {String(i + 1).padStart(2, '0')}</span>
                 <BookOpen size={36} strokeWidth={1} />
