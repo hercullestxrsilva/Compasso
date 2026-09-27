@@ -4,3 +4,4 @@ public/pdfjs
 .runtime
 package-lock.json
 tests/fixtures
+.claude

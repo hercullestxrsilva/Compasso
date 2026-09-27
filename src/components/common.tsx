@@ -26,8 +26,11 @@ export function Modal({
     const d = ref.current!;
     const previous = document.activeElement as HTMLElement | null;
     d.showModal();
-    // showModal focuses the first focusable element (the close button); prefer an explicit autofocus target.
-    d.querySelector<HTMLElement>('[autofocus],[data-autofocus]')?.focus();
+    // showModal focuses the first focusable element (the close button). React's autoFocus does not render an
+    // attribute, so prefer an explicit data-autofocus target, then the first field of a form.
+    d.querySelector<HTMLElement>(
+      '[data-autofocus],[autofocus],form input:not([type=hidden]):not([disabled]),form textarea:not([disabled]),form select:not([disabled])',
+    )?.focus();
     return () => {
       d.close();
       if (previous?.isConnected) previous.focus();

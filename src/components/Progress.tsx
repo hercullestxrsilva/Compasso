@@ -38,7 +38,6 @@ import {
 import { Badge, Empty, Field, Modal, download, errorText, useConfirm, type Notify } from './common';
 import Recorder from './Recorder';
 import { makePlayableCopy, recordingHealthMessage } from '../audio/recording';
-import { setActivity } from '../activity';
 import { lastPracticeBySegment, reviewStatus, type ReviewStatus } from '../practice/plan';
 import {
   addDays,
@@ -59,7 +58,6 @@ import {
 import '../styles/progress.css';
 
 export type ProgressTab = 'history' | 'recordings' | 'review';
-const RECORDING_ACTIVITY = 'progress-attempt';
 
 function RecordingPlayer({
   assetId,
@@ -955,16 +953,6 @@ export default function Progress({
   const onRecorderBusy = useCallback((busy: boolean) => {
     busyRef.current = busy;
     setRecording(busy);
-    setActivity(RECORDING_ACTIVITY, busy ? { kind: 'recording', label: 'Gravação de tentativa' } : null);
-  }, []);
-  const onRecorderElapsed = useCallback((seconds: number) => {
-    // A late tick must not register a recording that has already ended.
-    if (!busyRef.current) return;
-    setActivity(RECORDING_ACTIVITY, {
-      kind: 'recording',
-      label: 'Gravação de tentativa',
-      detail: clock(seconds),
-    });
   }, []);
   const onRecordingsTab = tab === 'recordings';
   useEffect(() => {
@@ -1275,7 +1263,6 @@ export default function Progress({
                 origin={{ kind: 'attempt', segmentId: link || undefined }}
                 onFile={saveRecording}
                 onBusyChange={onRecorderBusy}
-                onElapsed={onRecorderElapsed}
                 label="Gravar tentativa"
               />
               <label className="btn secondary file-button import-attempt">
