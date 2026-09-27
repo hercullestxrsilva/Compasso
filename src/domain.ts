@@ -209,6 +209,15 @@ export function formatDate(s: string) {
     month: 'short',
   });
 }
+/** Text as searches compare it: lower case, without accents, so "preludio" finds "Prelúdio". */
+export const searchKey = (text: string) =>
+  text
+    .normalize('NFD')
+    .replace(/\p{Mn}/gu, '')
+    .toLocaleLowerCase('pt-BR');
+/** True when `query` (typed in a search field) appears in `text`, ignoring case, accents and outer spaces. */
+export const matchesSearch = (text: string, query: string) =>
+  searchKey(text).includes(searchKey(query.trim()));
 export function clock(seconds: number) {
   const s = Math.max(0, Math.round(seconds));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;

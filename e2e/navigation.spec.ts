@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { addPiece, mainHeading, mainNav, seedLibrary } from './helpers';
+import { addPiece, countRows, mainHeading, mainNav, seedLibrary } from './helpers';
 
 test('each screen has its own address and Back/Forward move between them', async ({ page }) => {
   await page.goto('/');
@@ -117,4 +117,28 @@ test('a note typed but not saved is not thrown away without asking', async ({ pa
   await expect(note).toHaveValue('');
   await mainNav(page).getByRole('button', { name: 'Evolução' }).click();
   await expect(mainHeading(page)).toHaveText('Sua evolução');
+});
+
+test('Repertório search ignores accents, and deleting a piece starts on Cancelar', async ({ page }) => {
+  await addPiece(page, 'Prelúdio Teste');
+  await mainNav(page).getByRole('button', { name: 'Repertório' }).click();
+  const card = page.getByRole('button', { name: 'Prelúdio Teste', exact: true });
+  const search = page.getByLabel('Buscar repertório');
+  for (const query of ['preludio', 'PRELÚDIO', ' teste ']) {
+    await search.fill(query);
+    await expect(card, query).toBeVisible();
+  }
+  await search.fill('sonata');
+  await expect(page.getByText('Nenhuma peça encontrada')).toBeVisible();
+  await search.fill('');
+
+  // Two Enter presses on the trash button: the first opens the question, the second answers Cancelar.
+  await page.getByRole('button', { name: 'Excluir Prelúdio Teste' }).focus();
+  await page.keyboard.press('Enter');
+  const ask = page.getByRole('dialog', { name: 'Excluir peça?' });
+  await expect(ask.getByRole('button', { name: 'Cancelar' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(ask).toBeHidden();
+  await expect(card).toBeVisible();
+  expect((await countRows(page)).pieces).toBe(1);
 });

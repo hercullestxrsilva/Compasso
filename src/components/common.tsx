@@ -137,12 +137,18 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
         <Modal title={request.title} onClose={() => close(false)}>
           <div className="confirm-message">{request.message}</div>
           <footer className="modal-actions">
-            <button type="button" className="btn secondary" onClick={() => close(false)}>
+            {/* A destructive question starts on Cancelar, so a stray or repeated Enter does not delete. */}
+            <button
+              type="button"
+              data-autofocus={request.danger || undefined}
+              className="btn secondary"
+              onClick={() => close(false)}
+            >
               {request.cancelLabel ?? 'Cancelar'}
             </button>
             <button
               type="button"
-              data-autofocus
+              data-autofocus={!request.danger || undefined}
               className={`btn ${request.danger ? 'danger' : ''}`}
               onClick={() => close(true)}
             >
