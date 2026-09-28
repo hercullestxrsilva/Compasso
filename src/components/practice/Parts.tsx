@@ -271,7 +271,7 @@ export function CycleSummary({ config }: { config: PracticeConfig }) {
           )}
         </>
       )}
-      {config.repetitions > 1 && (
+      {config.repetitions > 1 && !config.loop && (
         <span>{config.restSeconds ? `${config.restSeconds} s de pausa` : 'Sem pausa'}</span>
       )}
     </div>

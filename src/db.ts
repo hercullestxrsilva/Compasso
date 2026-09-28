@@ -29,6 +29,8 @@ class PianoDB extends Dexie {
   routines!: Table<Routine>;
   captures!: Table<Capture>;
   captureChunks!: Table<{ id: string; captureId: string; index: number; blob: Blob }>;
+  /** Device-only handles, e.g. the folder chosen for videos. Not part of backups. */
+  handles!: Table<{ id: string; handle: FileSystemDirectoryHandle; name: string }>;
   constructor() {
     super('compasso-piano');
     this.version(1).stores({
@@ -46,6 +48,7 @@ class PianoDB extends Dexie {
       routines: 'id',
     });
     this.version(2).stores({ captures: 'id', captureChunks: 'id,captureId' });
+    this.version(3).stores({ handles: 'id' });
   }
 }
 export const db = new PianoDB();

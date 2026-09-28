@@ -17,6 +17,7 @@ import {
   RotateCcw,
   Music2,
   Volume2,
+  Video,
   Pointer,
   SkipForward,
   Timer,
@@ -67,6 +68,7 @@ import { nextStepIndex, resolveStep, stepDetail, TRANSITION_SECONDS } from '../p
 import { Modal, Field, ErrorBox, Badge, errorText, type Notify } from './common';
 import ScoreViewer from './ScoreViewer';
 import Recorder from './Recorder';
+import VideoRecorder from './VideoRecorder';
 import Routines from './Routines';
 import CycleSettings from './practice/CycleSettings';
 import SessionReview, { quickRate, reviewContext, type ReviewInfo } from './practice/SessionReview';
@@ -638,6 +640,8 @@ export default function Practice({
     });
     notify('Tentativa gravada. Ouça em Evolução › Minhas gravações.');
   };
+  // "Gravar vídeo": the title and trecho are read when the dialog opens, like a take's context.
+  const [video, setVideo] = useState<AttemptContext | null>(null);
   const onRecorderBusy = useCallback((recording: boolean) => {
     if (!recording) attempt.current = null;
     else attempt.current ??= latest.current?.attemptContext() ?? null;
@@ -1291,7 +1295,26 @@ export default function Practice({
                 onFile={saveAttempt}
                 onBusyChange={onRecorderBusy}
               />
+              <button type="button" className="btn secondary" onClick={() => setVideo(attemptContext())}>
+                <Video size={17} />
+                Gravar vídeo
+              </button>
             </div>
+            {video && (
+              <VideoRecorder
+                title={video.title}
+                notify={notify}
+                onClose={() => setVideo(null)}
+                onSaveInApp={async file => {
+                  attempt.current = video;
+                  try {
+                    await saveAttempt(file);
+                  } finally {
+                    attempt.current = null;
+                  }
+                }}
+              />
+            )}
             <p className="quiet-hint">
               <Volume2 size={14} />
               {started

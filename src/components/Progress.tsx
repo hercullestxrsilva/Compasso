@@ -79,6 +79,21 @@ function RecordingPlayer({
     setUrl(u);
     return () => URL.revokeObjectURL(u);
   }, [asset]);
+  // Videos recorded in Praticar play with their image.
+  if (url && asset?.mime.startsWith('video/'))
+    return (
+      <video
+        className="recording-video"
+        controls
+        playsInline
+        src={url}
+        preload="metadata"
+        onPlay={onPlay}
+        onError={() =>
+          setPlaybackError('Não foi possível reproduzir este vídeo neste navegador. Baixe o arquivo.')
+        }
+      />
+    );
   return url ? (
     <>
       <audio
