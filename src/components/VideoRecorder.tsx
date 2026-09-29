@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Circle, Download, FolderOpen, Square, Video } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Circle, Download, Eye, EyeOff, FolderOpen, Square, Video } from 'lucide-react';
 import { clock } from '../domain';
 import { setActivity } from '../activity';
 import { captureConstraints } from '../audio/recording';
@@ -229,29 +230,71 @@ export default function VideoRecorder({
     setPhase('recording');
   };
 
+  const [thumb, setThumb] = useState(true);
   const close = async () => {
     // Closing while recording ends and saves the take first.
     if (phase !== 'idle') await stop();
     onClose();
   };
 
+  // While recording, the dialog gives way to a small panel in a corner: the score and the metronome stay in
+  // view and usable. In full screen it goes inside the full-screen element, the only part the browser shows.
+  if (phase !== 'idle') {
+    const host =
+      document.fullscreenElement ?? document.querySelector('.score-viewer.is-fullscreen') ?? document.body;
+    return createPortal(
+      <div className="video-float" role="region" aria-label="Gravação de vídeo">
+        {thumb && (
+          <video
+            className="video-float-preview"
+            autoPlay
+            muted
+            playsInline
+            aria-label="Imagem da câmera"
+            ref={el => {
+              if (el && el.srcObject !== stream.current) el.srcObject = stream.current;
+            }}
+          />
+        )}
+        <div className="video-float-bar">
+          <span className="video-float-time" role="timer">
+            <Circle size={10} fill="currentColor" aria-hidden="true" />
+            {phase === 'saving' ? 'Salvando…' : clock(elapsed)}
+          </span>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label={thumb ? 'Esconder a imagem da câmera' : 'Mostrar a imagem da câmera'}
+            onClick={() => setThumb(t => !t)}
+          >
+            {thumb ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+          <button
+            type="button"
+            className="btn small danger"
+            disabled={phase === 'saving'}
+            onClick={() => void stop()}
+          >
+            <Square size={13} fill="currentColor" />
+            Parar
+          </button>
+        </div>
+      </div>,
+      host,
+    );
+  }
   return (
     <Modal title="Gravar vídeo" onClose={() => void close()} wide guard>
       <div className="video-recorder">
-        <div className={`video-preview ${phase === 'recording' ? 'is-recording' : ''}`}>
+        <div className="video-preview">
           <video ref={preview} autoPlay muted playsInline aria-label="Imagem da câmera" />
-          {phase === 'recording' && (
-            <span className="video-rec" role="timer">
-              <Circle size={10} fill="currentColor" aria-hidden="true" /> {clock(elapsed)}
-            </span>
-          )}
         </div>
         <div className="video-options">
           <div className="form-grid">
             <Field label="Câmera">
               <select
                 value={cameraId || activeCamera}
-                disabled={phase !== 'idle'}
+
                 onChange={e => setCameraId(e.target.value)}
               >
                 {cameras.map((c, i) => (
@@ -264,7 +307,7 @@ export default function VideoRecorder({
             <Field label="Microfone">
               <select
                 value={micId || activeMic}
-                disabled={phase !== 'idle'}
+
                 onChange={e => setMicId(e.target.value)}
               >
                 {mics.map((m, i) => (
@@ -281,7 +324,7 @@ export default function VideoRecorder({
           >
             <select
               value={quality}
-              disabled={phase !== 'idle'}
+
               onChange={e => {
                 const q = e.target.value as VideoQuality;
                 setQuality(q);
@@ -296,7 +339,7 @@ export default function VideoRecorder({
               <option value="1080">1080p (cerca de 38 MB por minuto)</option>
             </select>
           </Field>
-          <fieldset className="video-destination" disabled={phase !== 'idle'}>
+          <fieldset className="video-destination">
             <legend>Salvar em</legend>
             {folderable ? (
               <>
@@ -357,24 +400,12 @@ export default function VideoRecorder({
       )}
       <footer className="modal-actions">
         <button type="button" className="btn secondary" onClick={() => void close()}>
-          {phase === 'recording' ? 'Parar e fechar' : 'Fechar'}
+          Fechar
         </button>
-        {phase === 'recording' ? (
-          <button type="button" className="btn danger" onClick={() => void stop()}>
-            <Square size={15} fill="currentColor" />
-            Parar · {clock(elapsed)}
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="btn"
-            disabled={phase === 'saving' || !ready}
-            onClick={() => void start()}
-          >
-            <Video size={17} />
-            {phase === 'saving' ? 'Salvando…' : result ? 'Gravar outro' : 'Gravar'}
-          </button>
-        )}
+        <button type="button" className="btn" disabled={!ready} onClick={() => void start()}>
+          <Video size={17} />
+          {result ? 'Gravar outro' : 'Gravar'}
+        </button>
       </footer>
     </Modal>
   );

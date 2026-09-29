@@ -22,9 +22,17 @@ test('records a video of the practice and keeps it in the app', async ({ page })
   const inApp = dialog.getByRole('radio', { name: /Neste app/ });
   if (await inApp.count()) await inApp.check();
   await dialog.getByRole('button', { name: 'Gravar', exact: true }).click();
-  await expect(dialog.getByRole('timer')).toBeVisible();
+  // Recording, the dialog gives way to a small panel: the rest of the screen stays usable.
+  await expect(dialog).toBeHidden();
+  const panel = page.getByRole('region', { name: 'Gravação de vídeo' });
+  await expect(panel.getByRole('timer')).toBeVisible();
+  // The metronome controls stay usable under the panel (no dialog blocks them).
+  await page.getByRole('button', { name: 'Toque o pulso' }).click();
+  await expect(page.getByRole('button', { name: 'Toque de novo' })).toBeVisible();
   await page.waitForTimeout(2500);
-  await dialog.getByRole('button', { name: /^Parar ·/ }).click();
+  await panel.getByRole('button', { name: 'Esconder a imagem da câmera' }).click();
+  await expect(panel.getByLabel('Imagem da câmera', { exact: true })).toHaveCount(0);
+  await panel.getByRole('button', { name: 'Parar' }).click();
   await expect(dialog.getByText(/foi guardado no app/)).toBeVisible();
   await dialog.getByRole('button', { name: 'Fechar', exact: true }).last().click();
 

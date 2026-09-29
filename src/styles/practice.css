@@ -887,33 +887,12 @@
   border-radius: var(--radius-md);
   overflow: hidden;
   background: #000;
-  outline: 3px solid transparent;
-}
-.video-preview.is-recording {
-  outline-color: var(--danger);
 }
 .video-preview video {
   width: 100%;
   height: 100%;
   object-fit: contain;
   display: block;
-}
-.video-rec {
-  position: absolute;
-  top: var(--space-2);
-  left: var(--space-2);
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1-5);
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-pill);
-  background: rgb(0 0 0 / 0.6);
-  color: #fff;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-}
-.video-rec svg {
-  color: #ff5a5a;
 }
 .video-options {
   display: grid;
@@ -957,5 +936,51 @@
 @media (max-width: 900px) {
   .video-recorder {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Recording: a small panel in a corner instead of the dialog, so the score stays readable. */
+.video-float {
+  position: fixed;
+  right: max(var(--space-4), env(safe-area-inset-right));
+  bottom: max(var(--space-4), env(safe-area-inset-bottom));
+  z-index: 60;
+  width: 240px;
+  display: grid;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--danger);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  text-align: left;
+}
+.video-float-preview {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: #000;
+}
+.video-float-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1-5) var(--space-2);
+}
+.video-float-time {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin-right: auto;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.video-float-time svg {
+  color: var(--danger);
+}
+@media (max-width: 700px) {
+  .video-float {
+    width: 180px;
   }
 }
